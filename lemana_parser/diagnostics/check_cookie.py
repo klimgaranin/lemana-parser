@@ -3,7 +3,6 @@
 import argparse
 import os
 import re
-import sys
 
 from lemana_parser.config import CONFIG, ConfigError, validate_config
 from lemana_parser.http_utils import build_headers, describe_cookie
@@ -133,14 +132,14 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def main(argv: list[str] | None = None) -> None:
+def main(argv: list[str] | None = None) -> int:
     _parse_args(argv)
 
     try:
         validate_config()
     except ConfigError as exc:
         print(f"❌ Ошибка конфигурации: {exc}")
-        sys.exit(1)
+        return 1
 
     raw_cookie = _read_raw_cookie_from_env()
     dotenv_cookie = CONFIG["cookie"]
@@ -150,7 +149,8 @@ def main(argv: list[str] | None = None) -> None:
     _print_response_diagnostics(CONFIG["catalog_first_page_url"], dotenv_cookie)
 
     print("\n" + "=" * 60)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

@@ -120,8 +120,7 @@ def main(argv=None) -> int:
     if args.check_cookie:
         from lemana_parser.diagnostics.check_cookie import main as check_cookie_main
 
-        check_cookie_main()
-        return 0
+        return check_cookie_main([])
 
     print("=" * 60)
     print("🚀  LemanapPRO Parser")
