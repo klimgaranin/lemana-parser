@@ -15,7 +15,6 @@ import logging
 import math
 import re
 import time
-from typing import Dict, List, Set
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from bs4 import BeautifulSoup
@@ -33,6 +32,7 @@ from lemana_parser.parsers.html import (
     format_fixed,
     _extract_price_integer_primary,
 )
+from lemana_parser.models import CatalogItem
 
 logger = logging.getLogger("catalog")
 
@@ -172,9 +172,9 @@ def _extract_price_from_node(node) -> str:
     return format_fixed(price_raw, 2)
 
 
-def _extract_catalog_items_dom(scope: str, base_url: str) -> List[Dict]:
-    out: List[Dict] = []
-    seen_urls: Set[str] = set()
+def _extract_catalog_items_dom(scope: str, base_url: str) -> list[CatalogItem]:
+    out: list[CatalogItem] = []
+    seen_urls: set[str] = set()
 
     soup = BeautifulSoup(scope or "", "html.parser")
     product_nodes = soup.find_all(attrs={"data-product-id": True})
@@ -222,9 +222,9 @@ def _extract_catalog_items_dom(scope: str, base_url: str) -> List[Dict]:
     return out
 
 
-def _extract_catalog_items_regex(scope: str, base_url: str) -> List[Dict]:
-    out: List[Dict] = []
-    seen_urls: Set[str] = set()
+def _extract_catalog_items_regex(scope: str, base_url: str) -> list[CatalogItem]:
+    out: list[CatalogItem] = []
+    seen_urls: set[str] = set()
 
     starts = [
         (m.start(), m.group(1))
@@ -306,7 +306,7 @@ def _extract_catalog_items_regex(scope: str, base_url: str) -> List[Dict]:
     return out
 
 
-def _extract_catalog_items(html: str, base_url: str) -> List[Dict]:
+def _extract_catalog_items(html: str, base_url: str) -> list[CatalogItem]:
     """
     Извлекает карточки товаров из HTML одной страницы.
     Основной путь — DOM-парсинг, regex остаётся fallback для нестандартных фрагментов.
@@ -326,7 +326,12 @@ def _extract_catalog_items(html: str, base_url: str) -> List[Dict]:
 # Сетевые вызовы
 # ─────────────────────────────────────────────────────────────────────────────
 
-async def _fetch_page(session, page: int, base_url: str, sem: asyncio.Semaphore) -> List[Dict]:
+async def _fetch_page(
+    session,
+    page: int,
+    base_url: str,
+    sem: asyncio.Semaphore,
+) -> list[CatalogItem]:
     async with sem:
         url = _build_page_url(page)
         try:
@@ -353,13 +358,13 @@ async def _fetch_page(session, page: int, base_url: str, sem: asyncio.Semaphore)
 # Основной сбор
 # ─────────────────────────────────────────────────────────────────────────────
 
-async def collect_catalog_items(session) -> List[Dict]:
+async def collect_catalog_items(session) -> list[CatalogItem]:
     """
     Собирает все товары каталога.
     Возвращает список уникальных товаров.
     """
     base_url = extract_base_url(CONFIG["catalog_first_page_url"])
-    items_map: Dict[str, Dict] = {}
+    items_map: dict[str, CatalogItem] = {}
 
     # ── page 1 ───────────────────────────────────────────────────────────────
     html1 = await fetch_with_retry(
@@ -411,7 +416,7 @@ async def collect_catalog_items(session) -> List[Dict]:
     except Exception:
         pbar = None
 
-    async def fetch_batch(page_numbers: List[int]) -> None:
+    async def fetch_batch(page_numbers: list[int]) -> None:
         t0 = time.monotonic()
 
         results = await asyncio.gather(

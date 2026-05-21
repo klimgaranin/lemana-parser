@@ -14,7 +14,7 @@ HTML-парсер каталога lemanapro.ru: получает cookie, соб
 - `excel_writer.py` — запись результата в Excel;
 - `auth/` и `diagnostics/` — cookie и диагностика.
 
-В корне оставлены короткие точки входа `main.py`, `check_cookie.py`, `cookie_grabber.py`, чтобы Windows-скрипты и ручной запуск оставались простыми.
+В корне оставлены короткие точки входа `main.py`, `check_cookie.py`, `cookie_grabber.py`, чтобы Windows-скрипты и ручной запуск оставались простыми. Служебные команды лежат в `scripts/`.
 
 ## Основной сценарий: Windows
 
@@ -70,13 +70,25 @@ get_cookie.bat
 Запускай тесты через виртуальное окружение проекта:
 
 ```bat
-.venv\Scripts\python.exe -m unittest discover -s tests
+scripts\test_win.bat
 ```
 
 Для WSL/Linux-разработки аналог:
 
 ```bash
-.venv/bin/python -m unittest discover -s tests
+scripts/test_dev.sh
+```
+
+Полная локальная проверка без боевого парсинга:
+
+```bat
+scripts\check_win.bat
+```
+
+Очистка локальных артефактов разработки:
+
+```bat
+scripts\clean_dev.bat
 ```
 
 ## Малый безопасный прогон

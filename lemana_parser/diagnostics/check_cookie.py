@@ -1,7 +1,6 @@
-"""
-check_cookie.py — диагностика cookie и соединения с lemanapro.ru.
-"""
+"""Cookie and connection diagnostics for lemanapro.ru."""
 
+import argparse
 import os
 import re
 import sys
@@ -127,7 +126,16 @@ def _print_response_diagnostics(url: str, cookie: str) -> None:
         print(f"\n✅ HTTP и cookie выглядят рабочими. Карточек на странице: {len(cards)}")
 
 
-def main() -> None:
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Проверяет .env cookie и доступность каталога lemanapro.ru.",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> None:
+    _parse_args(argv)
+
     try:
         validate_config()
     except ConfigError as exc:

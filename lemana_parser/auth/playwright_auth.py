@@ -12,13 +12,14 @@ playwright_auth.py v5 — Cookie-first стратегия.
   для его IP. Скопировав его в .env, парсер делает запросы
   с того же IP → Qrator пропускает.
 """
-import time
 import logging
+import time
+
 from playwright.sync_api import sync_playwright
 
 logger = logging.getLogger("playwright_auth")
 
-PAGE_TIMEOUT_MS   = 35_000
+PAGE_TIMEOUT_MS = 35_000
 MAX_WAIT_COOKIE_S = 20
 
 
@@ -98,7 +99,7 @@ def _playwright_harvest(url: str) -> str:
     return "; ".join(f"{c['name']}={c['value']}" for c in cookies)
 
 
-def _print_manual_help():
+def _print_manual_help() -> None:
     print()
     print("=" * 55)
     print("  ⚠️  Нужна ручная вставка cookie")

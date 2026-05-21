@@ -1,7 +1,4 @@
-"""
-utils.py — HTML-парсинг и форматирование. Портированы хелперы из GAS.
-Нет зависимостей кроме стандартной библиотеки.
-"""
+"""HTML parsing and formatting helpers."""
 import re
 from html import unescape
 
@@ -166,10 +163,10 @@ def extract_characteristics_section(html: str) -> str:
     return tail[: end.start() + 10] if end else tail[:20000]
 
 
-def extract_all_characteristics(html: str) -> dict:
+def extract_all_characteristics(html: str) -> dict[str, str]:
     soup = BeautifulSoup(html or "", "html.parser")
     section = soup.find(id="characteristics") or soup
-    result = {}
+    result: dict[str, str] = {}
 
     for node in section.find_all(attrs={"data-qa": "characteristics-list-item"}):
         values = [part.get_text(" ", strip=True) for part in node.find_all("div", recursive=False)]

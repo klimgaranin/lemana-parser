@@ -12,7 +12,7 @@ http_utils.py — Асинхронные HTTP-запросы через curl_cff
 import asyncio
 import logging
 import random
-from typing import Optional
+from typing import Mapping
 from urllib.parse import quote, urlparse, urlunparse
 
 from curl_cffi.requests import AsyncSession
@@ -31,7 +31,10 @@ def describe_cookie(cookie: str) -> str:
     return f"{len(cookie)} симв, qrator_jsid2={'да' if 'qrator_jsid2' in cookie else 'нет'}"
 
 
-def build_headers(cookie: Optional[str] = None, extra_headers: Optional[dict] = None) -> dict:
+def build_headers(
+    cookie: str | None = None,
+    extra_headers: Mapping[str, str] | None = None,
+) -> dict[str, str]:
     """
     Минимальные заголовки поверх impersonate='chrome124'.
 
@@ -74,7 +77,7 @@ def create_session() -> AsyncSession:
     )
 
 
-def _retry_delay(attempt: int, status_code: Optional[int] = None) -> float:
+def _retry_delay(attempt: int, status_code: int | None = None) -> float:
     base = CONFIG["retry_backoff"] * (attempt ** 2)
     jitter = random.uniform(0.5, 2.0) if status_code in {403, 429} else random.uniform(0.1, 0.7)
     return base + jitter
@@ -91,8 +94,8 @@ async def fetch_with_retry(
     url: str,
     timeout_sec: int,
     tag: str = "URL",
-    extra_headers: Optional[dict] = None,
-) -> Optional[str]:
+    extra_headers: Mapping[str, str] | None = None,
+) -> str | None:
     """
     GET с retry.
     Возвращает текст ответа или None.

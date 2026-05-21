@@ -1,4 +1,5 @@
 import os
+from typing import Any
 from urllib.parse import urlparse
 
 from dotenv import load_dotenv
@@ -10,7 +11,9 @@ class ConfigError(ValueError):
     """Ошибка пользовательской конфигурации."""
 
 
-_CONFIG_ERRORS = []
+Config = dict[str, Any]
+
+_CONFIG_ERRORS: list[str] = []
 
 
 def _env_str(name: str, default: str) -> str:
@@ -50,7 +53,7 @@ DEFAULT_CATALOG_URL = (
 )
 
 
-CONFIG = {
+CONFIG: Config = {
     # ── Целевой каталог ──────────────────────────────────────────────────────
     "catalog_first_page_url": _env_str("LEMANA_CATALOG_URL", DEFAULT_CATALOG_URL),
 
@@ -95,7 +98,7 @@ BASE_HEADERS = [
 ]
 
 
-def validate_config(config: dict = CONFIG) -> None:
+def validate_config(config: Config = CONFIG) -> None:
     if _CONFIG_ERRORS:
         raise ConfigError("; ".join(_CONFIG_ERRORS))
 
@@ -135,7 +138,7 @@ def validate_config(config: dict = CONFIG) -> None:
         raise ConfigError("LEMANA_MIN_SLEEP_MS не должен быть больше LEMANA_MAX_SLEEP_MS")
 
 
-def apply_overrides(**overrides) -> None:
+def apply_overrides(**overrides: Any) -> None:
     for key, value in overrides.items():
         if value is not None:
             CONFIG[key] = value

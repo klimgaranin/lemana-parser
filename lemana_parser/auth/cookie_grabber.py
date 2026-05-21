@@ -9,11 +9,10 @@ import sys
 import time
 import json
 import os
-import webbrowser
 
 TARGET_HOST = "lemanapro.ru"
-DEBUG_PORT  = 9223
-WAIT_SEC    = 12  # ждём пока Qrator challenge решится
+DEBUG_PORT = 9223
+WAIT_SEC = 12  # ждём пока Qrator challenge решится
 
 CHROME_PATHS = [
     r"C:\Program Files\Google\Chrome\Application\chrome.exe",
@@ -57,17 +56,14 @@ def get_cookies_via_cdp(url: str) -> str:
 
     result = {}
 
-    def on_message(ws, message):
+    def on_message(ws, message: str) -> None:
         data = json.loads(message)
         if "result" in data and "cookies" in data.get("result", {}):
             result["cookies"] = data["result"]["cookies"]
             ws.close()
 
-    def on_open(ws):
-        ws.send(json.dumps({
-            "id": 1,
-            "method": "Network.getAllCookies"
-        }))
+    def on_open(ws) -> None:
+        ws.send(json.dumps({"id": 1, "method": "Network.getAllCookies"}))
 
     ws = websocket.WebSocketApp(ws_url, on_message=on_message, on_open=on_open)
     t = threading.Thread(target=ws.run_forever)
@@ -84,7 +80,7 @@ def get_cookies_via_cdp(url: str) -> str:
     return "; ".join(f"{c['name']}={c['value']}" for c in site_cookies)
 
 
-def main():
+def main() -> None:
     print("=" * 55)
     print("  Cookie Grabber для lemanapro.ru")
     print("=" * 55)

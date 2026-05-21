@@ -98,6 +98,7 @@ This repository is a Python parser for `lemanapro.ru` catalog pages. Core code l
 - `excel_writer.py` writes `.xlsx` output.
 - `auth/` and `diagnostics/` handle cookies and checks.
 - Root `main.py`, `check_cookie.py`, and `cookie_grabber.py` are Windows-friendly wrappers.
+- `scripts/` contains local test/check/cleanup helper scripts.
 - `tests/` contains parser unit tests.
 - `output/`, `parser.log`, `.env`, and `.venv/` are local runtime artifacts.
 
@@ -118,7 +119,7 @@ run_win.bat --url "https://lemanapro.ru/catalogue/..." --max-products 100
 Run tests on Windows:
 
 ```bat
-.venv\Scripts\python.exe -m unittest discover -s tests
+scripts\test_win.bat
 ```
 
 WSL/Linux development equivalent:
@@ -128,10 +129,12 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 python -m playwright install chromium
-.venv/bin/python -m unittest discover -s tests
+scripts/test_dev.sh
 ```
 
 Use `.venv\Scripts\python.exe main.py --check-cookie --no-pause` or `.venv\Scripts\python.exe check_cookie.py` to diagnose authentication. Windows users can also run `get_cookie.bat`.
+
+Use `scripts\check_win.bat` before commits and `scripts\clean_dev.bat` after local runs if generated artifacts appear.
 
 ## Coding Style & Naming Conventions
 
