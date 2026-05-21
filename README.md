@@ -18,6 +18,23 @@ HTML-парсер каталога lemanapro.ru: получает cookie, соб
 
 ## Основной сценарий: Windows
 
+Быстрый старт на новом Windows-компьютере:
+
+```bat
+git clone https://github.com/klimgaranin/lemana-parser.git
+cd lemana-parser
+setup_win.bat
+copy .env.example .env
+scripts\check_win.bat
+run_win.bat --help
+```
+
+После этого вставь актуальную cookie в `.env` и запускай диагностику:
+
+```bat
+.venv\Scripts\python.exe main.py --check-cookie --no-pause
+```
+
 ```bat
 setup_win.bat
 ```
