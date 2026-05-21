@@ -17,18 +17,27 @@ from urllib.parse import quote, urlparse, urlunparse
 
 from curl_cffi.requests import AsyncSession
 
-from config import CONFIG
+from lemana_parser.config import CONFIG
 
 logger = logging.getLogger("http_utils")
 
+MIN_HTML_CHARS = 200
+RETRYABLE_STATUS_CODES = {403, 408, 429, 500, 502, 503, 504}
 
-def _default_headers() -> dict:
+
+def describe_cookie(cookie: str) -> str:
+    if not cookie:
+        return "нет"
+    return f"{len(cookie)} симв, qrator_jsid2={'да' if 'qrator_jsid2' in cookie else 'нет'}"
+
+
+def build_headers(cookie: Optional[str] = None, extra_headers: Optional[dict] = None) -> dict:
     """
     Минимальные заголовки поверх impersonate='chrome124'.
 
     Важно:
     - НЕ добавляем Cache-Control / Pragma.
-    - Cookie берём из CONFIG, если она уже получена.
+    - Cookie берём из аргумента или CONFIG, если она уже получена.
     """
     headers = {
         "Accept": (
@@ -37,8 +46,11 @@ def _default_headers() -> dict:
         ),
         "Accept-Language": "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7",
     }
-    if CONFIG["cookie"]:
-        headers["Cookie"] = CONFIG["cookie"]
+    cookie_value = CONFIG["cookie"] if cookie is None else cookie
+    if cookie_value:
+        headers["Cookie"] = cookie_value
+    if extra_headers:
+        headers.update(extra_headers)
     return headers
 
 
@@ -62,6 +74,18 @@ def create_session() -> AsyncSession:
     )
 
 
+def _retry_delay(attempt: int, status_code: Optional[int] = None) -> float:
+    base = CONFIG["retry_backoff"] * (attempt ** 2)
+    jitter = random.uniform(0.5, 2.0) if status_code in {403, 429} else random.uniform(0.1, 0.7)
+    return base + jitter
+
+
+def _response_meta(resp) -> str:
+    content_type = resp.headers.get("content-type", "") if getattr(resp, "headers", None) else ""
+    final_url = getattr(resp, "url", "") or ""
+    return f"status={resp.status_code}, url={final_url}, content-type={content_type}"
+
+
 async def fetch_with_retry(
     session: AsyncSession,
     url: str,
@@ -74,35 +98,33 @@ async def fetch_with_retry(
     Возвращает текст ответа или None.
     """
     safe_url = _encode_url(url)
+    logger.debug("[%s] GET %s | cookie: %s", tag, safe_url, describe_cookie(CONFIG["cookie"]))
 
     for attempt in range(1, CONFIG["max_retries"] + 1):
         try:
-            headers = _default_headers()
-            if extra_headers:
-                headers.update(extra_headers)
-
             resp = await session.get(
                 safe_url,
-                headers=headers,
+                headers=build_headers(extra_headers=extra_headers),
                 timeout=timeout_sec,
                 allow_redirects=True,
             )
 
             if resp.status_code == 401:
                 logger.error(
-                    "[%s] HTTP 401 — cookie отклонена сервером. "
-                    "Проверь актуальность cookie и заголовки.",
+                    "[%s] HTTP 401 — cookie отклонена сервером (%s). "
+                    "Обнови LEMANA_COOKIE через get_cookie.bat или вручную.",
                     tag,
+                    describe_cookie(CONFIG["cookie"]),
                 )
                 return None
 
-            if resp.status_code in (403, 429):
-                wait = CONFIG["retry_backoff"] * (attempt ** 2) + random.uniform(0.5, 2.0)
+            if resp.status_code in RETRYABLE_STATUS_CODES:
+                wait = _retry_delay(attempt, resp.status_code)
                 logger.warning(
-                    "[%s] attempt=%d HTTP %d — rate-limit/ban, ждём %.1f сек",
+                    "[%s] attempt=%d %s — retry через %.1f сек",
                     tag,
                     attempt,
-                    resp.status_code,
+                    _response_meta(resp),
                     wait,
                 )
                 if attempt < CONFIG["max_retries"]:
@@ -111,7 +133,7 @@ async def fetch_with_retry(
 
             if resp.status_code < 400:
                 text = resp.text
-                if text and len(text) > 200:
+                if text and len(text) >= MIN_HTML_CHARS:
                     return text
 
                 logger.warning(
@@ -122,15 +144,17 @@ async def fetch_with_retry(
                     len(text or ""),
                 )
             else:
-                logger.warning("[%s] attempt=%d HTTP %d", tag, attempt, resp.status_code)
+                logger.warning("[%s] attempt=%d %s", tag, attempt, _response_meta(resp))
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning("[%s] attempt=%d timeout", tag, attempt)
         except Exception as exc:
-            logger.warning("[%s] attempt=%d error: %s", tag, attempt, exc)
+            logger.warning("[%s] attempt=%d error: %s: %s", tag, attempt, type(exc).__name__, exc)
 
         if attempt < CONFIG["max_retries"]:
-            await asyncio.sleep(CONFIG["retry_backoff"] * (attempt ** 2))
+            wait = _retry_delay(attempt)
+            logger.debug("[%s] attempt=%d retry через %.1f сек", tag, attempt, wait)
+            await asyncio.sleep(wait)
 
     logger.error("[%s] retry exhausted: %s", tag, url)
     return None

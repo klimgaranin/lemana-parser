@@ -11,7 +11,7 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
-from config import CONFIG, BASE_HEADERS
+from lemana_parser.config import BASE_HEADERS, CONFIG
 
 logger = logging.getLogger("excel_writer")
 
@@ -76,6 +76,8 @@ def write_xlsx(products: List[Dict], char_keys: List[str]) -> str:
             else:
                 cell.font = _CELL_FONT
 
+        _write("Статус",              p.get("status", "ok"))
+        _write("Ошибка",              p.get("error", ""))
         _write("Артикул ЛМ",          p.get("article", ""))
         _write("ССЫЛКА",               p.get("url", ""),   is_link=True)
         _write("Наименование товара",  p.get("name", ""))
@@ -87,6 +89,8 @@ def write_xlsx(products: List[Dict], char_keys: List[str]) -> str:
 
     # ── Ширина колонок ────────────────────────────────────────────────────────
     COL_WIDTHS = {
+        "Статус":              16,
+        "Ошибка":              45,
         "Артикул ЛМ":          12,
         "ССЫЛКА":               40,
         "Наименование товара":  45,

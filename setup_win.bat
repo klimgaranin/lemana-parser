@@ -4,13 +4,12 @@ echo  LemanapPRO Parser v2 — установка (Windows)
 echo ============================================================
 
 python -m venv .venv
-call .venv\Scripts\activate.bat
-pip install --upgrade pip
-pip install -r requirements.txt
+".venv\Scripts\python.exe" -m pip install --upgrade pip
+".venv\Scripts\python.exe" -m pip install -r requirements.txt
 
 echo.
 echo Устанавливаем Chromium для Playwright...
-playwright install chromium
+".venv\Scripts\python.exe" -m playwright install chromium
 
 echo.
 echo ============================================================

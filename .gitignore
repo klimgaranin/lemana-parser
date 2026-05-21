@@ -4,3 +4,9 @@ __pycache__/
 .env
 output/
 parser.log
+*.log
+*.Zone.Identifier
+*.xlsx
+dist/
+build/
+*.spec

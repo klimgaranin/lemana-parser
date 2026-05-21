@@ -23,7 +23,7 @@ MAX_WAIT_COOKIE_S = 20
 
 
 def harvest_cookies_sync(url: str) -> str:
-    from config import CONFIG
+    from lemana_parser.config import CONFIG
 
     # ── 1. Используем cookie из .env если он есть ─────────────────────────
     existing = (CONFIG.get("cookie") or "").strip()

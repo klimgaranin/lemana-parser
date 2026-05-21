@@ -1,0 +1,141 @@
+import os
+from urllib.parse import urlparse
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
+
+class ConfigError(ValueError):
+    """Ошибка пользовательской конфигурации."""
+
+
+_CONFIG_ERRORS = []
+
+
+def _env_str(name: str, default: str) -> str:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    value = value.strip()
+    return value if value else default
+
+
+def _env_int(name: str, default: int) -> int:
+    value = os.getenv(name)
+    if value is None or not value.strip():
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        _CONFIG_ERRORS.append(f"{name} должен быть целым числом, сейчас: {value!r}")
+        return default
+
+
+def _env_float(name: str, default: float) -> float:
+    value = os.getenv(name)
+    if value is None or not value.strip():
+        return default
+    try:
+        return float(value.replace(",", "."))
+    except ValueError:
+        _CONFIG_ERRORS.append(f"{name} должен быть числом, сейчас: {value!r}")
+        return default
+
+
+DEFAULT_CATALOG_URL = (
+    "https://lemanapro.ru/catalogue/svetilniki-dlya-vannoy/"
+    "?deliveryType=%D0%A1%D0%B0%D0%BC%D0%BE%D0%B2%D1%8B%D0%B2%D0%BE%D0%B7"
+    "+%D0%B2+%D0%BC%D0%B0%D0%B3%D0%B0%D0%B7%D0%B8%D0%BD%D0%B5"
+)
+
+
+CONFIG = {
+    # ── Целевой каталог ──────────────────────────────────────────────────────
+    "catalog_first_page_url": _env_str("LEMANA_CATALOG_URL", DEFAULT_CATALOG_URL),
+
+    # ── Вывод ────────────────────────────────────────────────────────────────
+    "output_dir":      _env_str("LEMANA_OUTPUT_DIR", "output"),
+    "output_filename": _env_str("LEMANA_OUTPUT_FILENAME", "lemana_result.xlsx"),
+
+    # ── Ограничители ─────────────────────────────────────────────────────────
+    "max_products":     _env_int("LEMANA_MAX_PRODUCTS", 100000),
+    "max_pages_safety": _env_int("LEMANA_MAX_PAGES_SAFETY", 8000),
+
+    # ── Параллелизм ──────────────────────────────────────────────────────────
+    "catalog_concurrency": _env_int("LEMANA_CATALOG_CONCURRENCY", 8),
+    "product_concurrency": _env_int("LEMANA_PRODUCT_CONCURRENCY", 1),
+
+    # ── Таймауты (секунды) ───────────────────────────────────────────────────
+    "catalog_timeout": _env_int("LEMANA_CATALOG_TIMEOUT", 25),
+    "product_timeout": _env_int("LEMANA_PRODUCT_TIMEOUT", 30),
+
+    # ── Повторы при ошибке ───────────────────────────────────────────────────
+    "max_retries":   _env_int("LEMANA_MAX_RETRIES", 4),
+    "retry_backoff": _env_float("LEMANA_RETRY_BACKOFF", 0.6),
+
+    # ── Адаптивная пауза между батчами (мс) ─────────────────────────────────
+    "min_sleep_ms": _env_int("LEMANA_MIN_SLEEP_MS", 1500),
+    "max_sleep_ms": _env_int("LEMANA_MAX_SLEEP_MS", 3500),
+    "product_batch_sleep": _env_float("LEMANA_PRODUCT_BATCH_SLEEP", 4.0),
+
+    # ── Cookie (Playwright заполняет автоматически) ──────────────────────────
+    "cookie": os.getenv("LEMANA_COOKIE", "").strip().strip('"\''),
+}
+
+# Базовые колонки — всегда первые в xlsx
+BASE_HEADERS = [
+    "Статус",
+    "Ошибка",
+    "Артикул ЛМ",
+    "ССЫЛКА",
+    "Наименование товара",
+    "Цена на сайте",
+    "Ссылка на картинку",
+]
+
+
+def validate_config(config: dict = CONFIG) -> None:
+    if _CONFIG_ERRORS:
+        raise ConfigError("; ".join(_CONFIG_ERRORS))
+
+    parsed_url = urlparse(config["catalog_first_page_url"])
+    if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
+        raise ConfigError("LEMANA_CATALOG_URL должен быть полным http/https URL")
+
+    if not config["output_dir"].strip():
+        raise ConfigError("LEMANA_OUTPUT_DIR не должен быть пустым")
+
+    if not config["output_filename"].lower().endswith(".xlsx"):
+        raise ConfigError("LEMANA_OUTPUT_FILENAME должен оканчиваться на .xlsx")
+
+    positive_int_keys = [
+        "max_products",
+        "max_pages_safety",
+        "catalog_concurrency",
+        "product_concurrency",
+        "catalog_timeout",
+        "product_timeout",
+        "max_retries",
+    ]
+    for key in positive_int_keys:
+        if config[key] < 1:
+            raise ConfigError(f"{key} должен быть >= 1")
+
+    if config["retry_backoff"] <= 0:
+        raise ConfigError("LEMANA_RETRY_BACKOFF должен быть > 0")
+
+    if config["product_batch_sleep"] < 0:
+        raise ConfigError("LEMANA_PRODUCT_BATCH_SLEEP должен быть >= 0")
+
+    if config["min_sleep_ms"] < 0 or config["max_sleep_ms"] < 0:
+        raise ConfigError("LEMANA_MIN_SLEEP_MS и LEMANA_MAX_SLEEP_MS должны быть >= 0")
+
+    if config["min_sleep_ms"] > config["max_sleep_ms"]:
+        raise ConfigError("LEMANA_MIN_SLEEP_MS не должен быть больше LEMANA_MAX_SLEEP_MS")
+
+
+def apply_overrides(**overrides) -> None:
+    for key, value in overrides.items():
+        if value is not None:
+            CONFIG[key] = value

@@ -18,9 +18,11 @@ import time
 from typing import Dict, List, Set
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from config import CONFIG
-from http_utils import fetch_with_retry, compute_adaptive_sleep
-from utils import (
+from bs4 import BeautifulSoup
+
+from lemana_parser.config import CONFIG
+from lemana_parser.http_utils import compute_adaptive_sleep, fetch_with_retry
+from lemana_parser.parsers.html import (
     strip_html,
     decode_html,
     remove_spaces,
@@ -142,14 +144,87 @@ def _extract_products_list_scope(html: str) -> str:
 # Парсинг карточек
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _extract_catalog_items(html: str, base_url: str) -> List[Dict]:
-    """
-    Извлекает карточки товаров из HTML одной страницы.
-    """
+def _text_from_node(node) -> str:
+    return decode_html(node.get_text(" ", strip=True)) if node else ""
+
+
+def _attr_from_node(node, *names: str) -> str:
+    if not node:
+        return ""
+    for name in names:
+        value = node.get(name)
+        if value:
+            return str(value)
+    return ""
+
+
+def _extract_price_from_node(node) -> str:
+    price_node = node.find(
+        attrs={
+            "data-testid": "price-integer",
+            "style": re.compile(r"var\(--text-primary\)", re.I),
+        }
+    )
+    if not price_node:
+        price_node = node.find(attrs={"data-testid": "price-integer"})
+
+    price_raw = remove_spaces(decode_html(_text_from_node(price_node)))
+    return format_fixed(price_raw, 2)
+
+
+def _extract_catalog_items_dom(scope: str, base_url: str) -> List[Dict]:
     out: List[Dict] = []
     seen_urls: Set[str] = set()
 
-    scope = _extract_products_list_scope(html) or (html or "")
+    soup = BeautifulSoup(scope or "", "html.parser")
+    product_nodes = soup.find_all(attrs={"data-product-id": True})
+
+    for node in product_nodes:
+        prod_id = _attr_from_node(node, "data-product-id")
+
+        link = (
+            node.find("a", href=re.compile(r"^/catalogue/", re.I))
+            or node.find("a", href=re.compile(r"^/", re.I))
+            or node.find("a", href=True)
+        )
+        href = _attr_from_node(link, "href")
+        if not href:
+            continue
+
+        url = normalize_url(href, base_url)
+        if url in seen_urls:
+            continue
+        seen_urls.add(url)
+
+        name_node = (
+            node.find(attrs={"data-qa": "product-name"})
+            or node.find(attrs={"itemprop": "name"})
+        )
+        name = _text_from_node(name_node) or _attr_from_node(link, "aria-label")
+
+        image_node = (
+            node.find("img", attrs={"itemprop": "image"})
+            or node.find("img", src=True)
+            or node.find("img", attrs={"data-src": True})
+        )
+        image = _attr_from_node(image_node, "src", "data-src").strip()
+
+        out.append(
+            {
+                "article": prod_id or extract_article_from_url(url),
+                "url": url,
+                "name": name.strip(),
+                "price": _extract_price_from_node(node),
+                "image": image,
+            }
+        )
+
+    return out
+
+
+def _extract_catalog_items_regex(scope: str, base_url: str) -> List[Dict]:
+    out: List[Dict] = []
+    seen_urls: Set[str] = set()
 
     starts = [
         (m.start(), m.group(1))
@@ -231,6 +306,22 @@ def _extract_catalog_items(html: str, base_url: str) -> List[Dict]:
     return out
 
 
+def _extract_catalog_items(html: str, base_url: str) -> List[Dict]:
+    """
+    Извлекает карточки товаров из HTML одной страницы.
+    Основной путь — DOM-парсинг, regex остаётся fallback для нестандартных фрагментов.
+    """
+    scope = _extract_products_list_scope(html) or (html or "")
+
+    items = _extract_catalog_items_dom(scope, base_url)
+    if items:
+        logger.debug("DOM-парсер нашёл карточек: %d", len(items))
+        return items
+
+    logger.warning("DOM-парсер не нашёл карточки, используем regex fallback")
+    return _extract_catalog_items_regex(scope, base_url)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Сетевые вызовы
 # ─────────────────────────────────────────────────────────────────────────────
@@ -238,20 +329,24 @@ def _extract_catalog_items(html: str, base_url: str) -> List[Dict]:
 async def _fetch_page(session, page: int, base_url: str, sem: asyncio.Semaphore) -> List[Dict]:
     async with sem:
         url = _build_page_url(page)
-        html = await fetch_with_retry(
-            session,
-            url,
-            CONFIG["catalog_timeout"],
-            tag=f"CATALOG p={page}",
-            extra_headers={"Referer": _build_page_url(max(1, page - 1))},
-        )
-        if not html:
-            logger.warning("page=%d: пустой ответ", page)
-            return []
+        try:
+            html = await fetch_with_retry(
+                session,
+                url,
+                CONFIG["catalog_timeout"],
+                tag=f"CATALOG p={page}",
+                extra_headers={"Referer": _build_page_url(max(1, page - 1))},
+            )
+            if not html:
+                logger.warning("page=%d: пустой ответ", page)
+                return []
 
-        items = _extract_catalog_items(html, base_url)
-        logger.info("page=%d → %d товаров", page, len(items))
-        return items
+            items = _extract_catalog_items(html, base_url)
+            logger.info("page=%d → %d товаров", page, len(items))
+            return items
+        except Exception as exc:
+            logger.exception("page=%d: ошибка обработки страницы: %s", page, exc)
+            return []
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -320,10 +415,14 @@ async def collect_catalog_items(session) -> List[Dict]:
         t0 = time.monotonic()
 
         results = await asyncio.gather(
-            *[_fetch_page(session, p, base_url, sem) for p in page_numbers]
+            *[_fetch_page(session, p, base_url, sem) for p in page_numbers],
+            return_exceptions=True,
         )
 
-        for page_items in results:
+        for page, page_items in zip(page_numbers, results):
+            if isinstance(page_items, Exception):
+                logger.exception("page=%d: необработанная ошибка батча", page, exc_info=page_items)
+                continue
             for it in page_items:
                 if it["url"] not in items_map:
                     items_map[it["url"]] = it

@@ -3,6 +3,9 @@ utils.py — HTML-парсинг и форматирование. Портиро
 Нет зависимостей кроме стандартной библиотеки.
 """
 import re
+from html import unescape
+
+from bs4 import BeautifulSoup
 
 
 # ─── Строковые хелперы ────────────────────────────────────────────────────────
@@ -13,7 +16,7 @@ def strip_html(s: str) -> str:
 
 
 def decode_html(s: str) -> str:
-    return (s or "").replace("&nbsp;", " ").replace("&#160;", " ")
+    return unescape(s or "").replace("\xa0", " ")
 
 
 def remove_spaces(s: str) -> str:
@@ -73,6 +76,16 @@ def normalize_url(href_or_url: str, base_url: str) -> str:
 
 def _extract_price_integer_primary(html: str) -> str:
     """Цена только из span с style=var(--text-primary) — актуальная, не перечёркнутая."""
+    soup = BeautifulSoup(html or "", "html.parser")
+    node = soup.find(
+        attrs={
+            "data-testid": "price-integer",
+            "style": re.compile(r"var\(--text-primary\)", re.I),
+        }
+    )
+    if node:
+        return remove_spaces(decode_html(node.get_text(" ", strip=True)))
+
     m = re.search(
         r'<span[^>]*data-testid=["\']price-integer["\'][^>]*'
         r'style=["\'][^"\']*var\(--text-primary\)[^"\']*["\'][^>]*>([\s\S]*?)</span>',
@@ -87,12 +100,22 @@ def parse_price_from_html(html: str) -> str:
     int_part = _extract_price_integer_primary(html)
     if not int_part:
         return ""
-    frac_raw = (
-        strip_html(match1(html, r'data-testid=["\']price-fraction["\'][^>]*>([\s\S]*?)</span>'))
-        or strip_html(match1(html, r'data-testid=["\']price-decimal["\'][^>]*>([\s\S]*?)</span>'))
-    ).strip()
+
+    soup = BeautifulSoup(html or "", "html.parser")
+    frac_node = (
+        soup.find(attrs={"data-testid": "price-fraction"})
+        or soup.find(attrs={"data-testid": "price-decimal"})
+    )
+    frac_raw = strip_html(frac_node.get_text(" ", strip=True)) if frac_node else ""
+    if not frac_raw:
+        frac_raw = (
+            strip_html(match1(html, r'data-testid=["\']price-fraction["\'][^>]*>([\s\S]*?)</span>'))
+            or strip_html(match1(html, r'data-testid=["\']price-decimal["\'][^>]*>([\s\S]*?)</span>'))
+        ).strip()
+
     if not frac_raw:
         return int_part
+
     frac = re.sub(r"\D", "", remove_spaces(frac_raw))
     if len(frac) == 1:
         frac += "0"
@@ -103,6 +126,18 @@ def parse_price_from_html(html: str) -> str:
 # ─── Парсинг изображения ──────────────────────────────────────────────────────
 
 def extract_main_image(html: str) -> str:
+    soup = BeautifulSoup(html or "", "html.parser")
+    meta = (
+        soup.find("meta", attrs={"property": "og:image"})
+        or soup.find(attrs={"itemprop": "image", "content": True})
+    )
+    if meta and meta.get("content"):
+        return str(meta["content"])
+
+    img = soup.find("img", src=re.compile(r"\.(?:jpg|jpeg|png|webp)(?:\?|$)", re.I))
+    if img and img.get("src"):
+        return str(img["src"])
+
     og = match1(html, r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']')
     if og:
         return og
@@ -132,8 +167,24 @@ def extract_characteristics_section(html: str) -> str:
 
 
 def extract_all_characteristics(html: str) -> dict:
-    section = extract_characteristics_section(html) or (html or "")
+    soup = BeautifulSoup(html or "", "html.parser")
+    section = soup.find(id="characteristics") or soup
     result = {}
+
+    for node in section.find_all(attrs={"data-qa": "characteristics-list-item"}):
+        values = [part.get_text(" ", strip=True) for part in node.find_all("div", recursive=False)]
+        if len(values) < 2:
+            values = [part.get_text(" ", strip=True) for part in node.find_all(["dt", "dd"], recursive=False)]
+        if len(values) >= 2:
+            label = re.sub(r"\s+", " ", decode_html(values[0])).strip()
+            value = re.sub(r"\s+", " ", decode_html(values[1])).strip()
+            if label and value and label not in result:
+                result[label] = value
+
+    if result:
+        return result
+
+    section = extract_characteristics_section(html) or (html or "")
     for m in re.finditer(
         r'data-qa=["\']characteristics-list-item["\'][^>]*>'
         r'\s*<div[^>]*>([\s\S]*?)</div>\s*<div[^>]*>([\s\S]*?)</div>',
