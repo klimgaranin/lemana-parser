@@ -12,8 +12,10 @@ playwright_auth.py v5 — Cookie-first стратегия.
   для его IP. Скопировав его в .env, парсер делает запросы
   с того же IP → Qrator пропускает.
 """
+
 import logging
 import time
+from contextlib import suppress
 
 from playwright.sync_api import sync_playwright
 
@@ -32,7 +34,8 @@ def harvest_cookies_sync(url: str) -> str:
         has_q = "qrator_jsid2" in existing
         logger.info(
             "🍪 Используем cookie из .env (%d симв | qrator_jsid2=%s)",
-            len(existing), "✓" if has_q else "⚠️ ОТСУТСТВУЕТ"
+            len(existing),
+            "✓" if has_q else "⚠️ ОТСУТСТВУЕТ",
         )
         if not has_q:
             logger.warning(
@@ -57,8 +60,7 @@ def harvest_cookies_sync(url: str) -> str:
     # ── 3. Fallback: инструкция ───────────────────────────────────────────
     _print_manual_help()
     raise RuntimeError(
-        "Нет валидного cookie. "
-        "Добавь LEMANA_COOKIE в .env (смотри ИНСТРУКЦИЯ_COOKIE.txt)"
+        "Нет валидного cookie. Добавь LEMANA_COOKIE в .env (смотри ИНСТРУКЦИЯ_COOKIE.txt)"
     )
 
 
@@ -77,14 +79,10 @@ def _playwright_harvest(url: str) -> str:
             locale="ru-RU",
             timezone_id="Europe/Moscow",
         )
-        context.add_init_script(
-            "Object.defineProperty(navigator,'webdriver',{get:()=>undefined});"
-        )
+        context.add_init_script("Object.defineProperty(navigator,'webdriver',{get:()=>undefined});")
         page = context.new_page()
-        try:
+        with suppress(Exception):
             page.goto(url, wait_until="networkidle", timeout=PAGE_TIMEOUT_MS)
-        except Exception:
-            pass
 
         for _ in range(MAX_WAIT_COOKIE_S):
             cookies = context.cookies()
@@ -108,7 +106,7 @@ def _print_manual_help() -> None:
     print("  2. F12 → Network → F5 → кликни первый запрос")
     print("  3. Request Headers → строка 'cookie:' → Copy value")
     print("  4. Открой .env в папке проекта")
-    print("  5. LEMANA_COOKIE=\\\"<вставь сюда>\\\"")
+    print('  5. LEMANA_COOKIE=\\"<вставь сюда>\\"')
     print("  6. Сохрани → запусти run_win.bat")
     print()
     print("  Или запусти: python cookie_grabber.py")

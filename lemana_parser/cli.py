@@ -5,11 +5,15 @@ main.py — Точка входа LemanapPRO Parser v2.
   - Playwright sync  → запускается ДО asyncio (нет конфликта)
   - curl_cffi async  → asyncio с WindowsSelectorEventLoopPolicy (требует curl_cffi)
 """
+
 import argparse
 import asyncio
 import logging
 import sys
 import time
+
+from lemana_parser.auth.playwright_auth import harvest_cookies_sync
+from lemana_parser.config import CONFIG, ConfigError, apply_overrides, validate_config
 
 # ── Логирование настраиваем до всего остального ──────────────────────────────
 logging.basicConfig(
@@ -23,9 +27,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger("main")
 
-from lemana_parser.auth.playwright_auth import harvest_cookies_sync
-from lemana_parser.config import CONFIG, ConfigError, apply_overrides, validate_config
-
 
 def _parse_args(argv=None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -35,10 +36,18 @@ def _parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--output-dir", help="Папка для Excel-файлов")
     parser.add_argument("--output-filename", help="Имя Excel-файла, должно оканчиваться на .xlsx")
     parser.add_argument("--max-products", type=int, help="Максимум товаров для выгрузки")
-    parser.add_argument("--max-pages-safety", type=int, help="Предохранитель по максимуму страниц каталога")
-    parser.add_argument("--catalog-concurrency", type=int, help="Параллельность загрузки страниц каталога")
-    parser.add_argument("--product-concurrency", type=int, help="Параллельность загрузки карточек товаров")
-    parser.add_argument("--product-batch-sleep", type=float, help="Пауза между батчами карточек, сек")
+    parser.add_argument(
+        "--max-pages-safety", type=int, help="Предохранитель по максимуму страниц каталога"
+    )
+    parser.add_argument(
+        "--catalog-concurrency", type=int, help="Параллельность загрузки страниц каталога"
+    )
+    parser.add_argument(
+        "--product-concurrency", type=int, help="Параллельность загрузки карточек товаров"
+    )
+    parser.add_argument(
+        "--product-batch-sleep", type=float, help="Пауза между батчами карточек, сек"
+    )
     parser.add_argument("--cookie", help="Cookie для запросов, переопределяет LEMANA_COOKIE")
     parser.add_argument(
         "--no-playwright",
@@ -65,7 +74,7 @@ def _apply_cli_overrides(args: argparse.Namespace) -> None:
         catalog_concurrency=args.catalog_concurrency,
         product_concurrency=args.product_concurrency,
         product_batch_sleep=args.product_batch_sleep,
-        cookie=args.cookie.strip().strip('"\'') if args.cookie else None,
+        cookie=args.cookie.strip().strip("\"'") if args.cookie else None,
     )
 
 
@@ -77,7 +86,6 @@ async def _run_parsing() -> None:
     from lemana_parser.products import fetch_and_parse_products, summarize_products
 
     async with create_session() as session:
-
         logger.info("📄 Шаг 2/3: Сбор каталога...")
         catalog_items = await collect_catalog_items(session)
         logger.info("✅ Товаров в каталоге: %d", len(catalog_items))

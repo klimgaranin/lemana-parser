@@ -7,7 +7,6 @@ import re
 from lemana_parser.config import CONFIG, ConfigError, validate_config
 from lemana_parser.http_utils import build_headers, describe_cookie
 
-
 IMPORTANT_COOKIE_KEYS = [
     "qrator_jsid2",
     "qrator_jsr",
@@ -23,7 +22,7 @@ def _read_raw_cookie_from_env(env_path: str = ".env") -> str:
     if not os.path.exists(env_path):
         return ""
 
-    with open(env_path, "r", encoding="utf-8") as file:
+    with open(env_path, encoding="utf-8") as file:
         for line in file:
             line_stripped = line.rstrip("\n")
             if not line_stripped.startswith("LEMANA_COOKIE"):

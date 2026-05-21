@@ -4,11 +4,12 @@ cookie_grabber.py — Извлекает cookie lemanapro.ru из Chrome чер�
 Запускай когда нужно обновить cookie (раз в 3-7 дней).
 Chrome должен быть установлен на компьютере.
 """
+
+import json
+import os
 import subprocess
 import sys
 import time
-import json
-import os
 
 TARGET_HOST = "lemanapro.ru"
 DEBUG_PORT = 9223
@@ -31,9 +32,8 @@ def find_chrome() -> str:
 def get_cookies_via_cdp(url: str) -> str:
     try:
         import urllib.request
-        raw = urllib.request.urlopen(
-            f"http://localhost:{DEBUG_PORT}/json/list", timeout=3
-        ).read()
+
+        raw = urllib.request.urlopen(f"http://localhost:{DEBUG_PORT}/json/list", timeout=3).read()
         tabs = json.loads(raw)
     except Exception as e:
         print(f"❌ Не удалось подключиться к Chrome CDP: {e}")
@@ -52,6 +52,7 @@ def get_cookies_via_cdp(url: str) -> str:
         return ""
 
     import threading
+
     import websocket  # pip install websocket-client
 
     result = {}
@@ -93,14 +94,16 @@ def main() -> None:
     print(f"✅ Chrome найден: {chrome}")
     print(f"🌐 Открываем {TARGET_HOST} с debug-портом {DEBUG_PORT}...")
 
-    proc = subprocess.Popen([
-        chrome,
-        f"--remote-debugging-port={DEBUG_PORT}",
-        "--user-data-dir=chrome_cdp_session",
-        "--no-first-run",
-        "--disable-default-apps",
-        f"https://{TARGET_HOST}/",
-    ])
+    proc = subprocess.Popen(
+        [
+            chrome,
+            f"--remote-debugging-port={DEBUG_PORT}",
+            "--user-data-dir=chrome_cdp_session",
+            "--no-first-run",
+            "--disable-default-apps",
+            f"https://{TARGET_HOST}/",
+        ]
+    )
 
     print(f"⏳ Ждём {WAIT_SEC} сек (Qrator JS-challenge)...")
     time.sleep(WAIT_SEC)
@@ -111,7 +114,7 @@ def main() -> None:
         cookie_str = get_cookies_via_cdp(f"https://{TARGET_HOST}/")
         if "qrator_jsid2" in cookie_str:
             break
-        print(f"  попытка {attempt+1}: qrator_jsid2 ещё не получен, ждём...")
+        print(f"  попытка {attempt + 1}: qrator_jsid2 ещё не получен, ждём...")
         time.sleep(3)
 
     proc.terminate()
@@ -122,7 +125,7 @@ def main() -> None:
         return
 
     has_qrator = "qrator_jsid2" in cookie_str
-    print(f"\n✅ Cookie получен!")
+    print("\n✅ Cookie получен!")
     print(f"   Символов: {len(cookie_str)}")
     print(f"   qrator_jsid2: {'✓' if has_qrator else '✗ ОТСУТСТВУЕТ'}")
 
@@ -130,14 +133,14 @@ def main() -> None:
     env_path = ".env"
     env_lines = []
     if os.path.exists(env_path):
-        with open(env_path, "r", encoding="utf-8") as f:
-            env_lines = [l for l in f.readlines() if not l.startswith("LEMANA_COOKIE")]
+        with open(env_path, encoding="utf-8") as f:
+            env_lines = [line for line in f.readlines() if not line.startswith("LEMANA_COOKIE")]
 
     env_lines.append(f'LEMANA_COOKIE="{cookie_str}"\n')
     with open(env_path, "w", encoding="utf-8") as f:
         f.writelines(env_lines)
 
-    print(f"\n✅ Сохранено в .env")
+    print("\n✅ Сохранено в .env")
     print("   Теперь запускай: run_win.bat")
 
     if not has_qrator:

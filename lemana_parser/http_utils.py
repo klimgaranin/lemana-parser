@@ -12,7 +12,7 @@ http_utils.py — Асинхронные HTTP-запросы через curl_cff
 import asyncio
 import logging
 import random
-from typing import Mapping
+from collections.abc import Mapping
 from urllib.parse import quote, urlparse, urlunparse
 
 from curl_cffi.requests import AsyncSession
@@ -78,7 +78,7 @@ def create_session() -> AsyncSession:
 
 
 def _retry_delay(attempt: int, status_code: int | None = None) -> float:
-    base = CONFIG["retry_backoff"] * (attempt ** 2)
+    base = CONFIG["retry_backoff"] * (attempt**2)
     jitter = random.uniform(0.5, 2.0) if status_code in {403, 429} else random.uniform(0.1, 0.7)
     return base + jitter
 

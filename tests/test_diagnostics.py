@@ -25,7 +25,10 @@ class CookieDiagnosticsTests(unittest.TestCase):
     def test_main_returns_zero_when_diagnostics_complete(self):
         with (
             patch("lemana_parser.diagnostics.check_cookie.validate_config"),
-            patch("lemana_parser.diagnostics.check_cookie._read_raw_cookie_from_env", return_value="a=b"),
+            patch(
+                "lemana_parser.diagnostics.check_cookie._read_raw_cookie_from_env",
+                return_value="a=b",
+            ),
             patch("lemana_parser.diagnostics.check_cookie._print_env_diagnostics"),
             patch("lemana_parser.diagnostics.check_cookie._print_cookie_parts"),
             patch("lemana_parser.diagnostics.check_cookie._print_response_diagnostics"),
@@ -37,4 +40,3 @@ class CookieDiagnosticsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

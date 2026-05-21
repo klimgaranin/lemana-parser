@@ -3,7 +3,6 @@ import tempfile
 import unittest
 
 import openpyxl
-
 from lemana_parser.config import BASE_HEADERS, CONFIG
 from lemana_parser.excel_writer import write_xlsx
 
@@ -39,7 +38,9 @@ class ExcelWriterTests(unittest.TestCase):
                 workbook = openpyxl.load_workbook(out_path)
                 sheet = workbook.active
 
-                headers = [sheet.cell(row=1, column=i).value for i in range(1, len(BASE_HEADERS) + 2)]
+                headers = [
+                    sheet.cell(row=1, column=i).value for i in range(1, len(BASE_HEADERS) + 2)
+                ]
                 self.assertEqual(headers, BASE_HEADERS + ["Материал"])
                 self.assertEqual(sheet["A2"].value, "ok")
                 self.assertEqual(sheet["C2"].value, "123456")
@@ -53,4 +54,3 @@ class ExcelWriterTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

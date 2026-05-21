@@ -10,3 +10,4 @@ parser.log
 dist/
 build/
 *.spec
+.ruff_cache/

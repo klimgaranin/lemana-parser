@@ -67,6 +67,12 @@ get_cookie.bat
 
 ## Тесты
 
+Для разработки установи дополнительные инструменты:
+
+```bat
+.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+```
+
 Запускай тесты через виртуальное окружение проекта:
 
 ```bat
@@ -83,6 +89,13 @@ scripts/test_dev.sh
 
 ```bat
 scripts\check_win.bat
+```
+
+Проверка и форматирование кода:
+
+```bat
+scripts\lint_win.bat
+scripts\format_win.bat
 ```
 
 Очистка локальных артефактов разработки:

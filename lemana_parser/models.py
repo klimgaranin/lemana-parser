@@ -27,4 +27,3 @@ class ProductSummary(TypedDict):
     ok: int
     errors: int
     status_counts: dict[str, int]
-

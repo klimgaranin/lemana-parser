@@ -1,6 +1,7 @@
 """
 products.py — Параллельная загрузка и парсинг карточек товаров.
 """
+
 import asyncio
 import logging
 from collections import Counter
@@ -79,7 +80,9 @@ async def _fetch_product(session, item: CatalogItem, sem: asyncio.Semaphore) -> 
             )
             if not html:
                 logger.warning("%s: карточка не загружена", tag)
-                return _base_product(item, status="fetch_failed", error="Не удалось загрузить карточку")
+                return _base_product(
+                    item, status="fetch_failed", error="Не удалось загрузить карточку"
+                )
 
             product = _parse_product(html, item)
             if not product["name"] and not product["price"] and not product["characteristics"]:
@@ -103,14 +106,14 @@ async def fetch_and_parse_products(
     batch_size = CONFIG["product_concurrency"]
 
     from tqdm import tqdm
+
     with tqdm(total=len(catalog_items), desc="🔎 Карточки товаров", unit="шт") as pbar:
-
         for start in range(0, len(catalog_items), batch_size):
-            batch = catalog_items[start: start + batch_size]
+            batch = catalog_items[start : start + batch_size]
 
-            results = await asyncio.gather(*[
-                _fetch_product(session, item, sem) for item in batch
-            ], return_exceptions=True)
+            results = await asyncio.gather(
+                *[_fetch_product(session, item, sem) for item in batch], return_exceptions=True
+            )
 
             for result in results:
                 if isinstance(result, Exception):
@@ -146,5 +149,7 @@ async def fetch_and_parse_products(
     char_keys_sorted = sorted(all_char_keys, key=lambda x: x.lower())
     failed_count = sum(1 for product in products if product.get("status") != "ok")
     if failed_count:
-        logger.warning("Карточки товаров: %d из %d с ошибками/пустым парсингом", failed_count, len(products))
+        logger.warning(
+            "Карточки товаров: %d из %d с ошибками/пустым парсингом", failed_count, len(products)
+        )
     return products, char_keys_sorted

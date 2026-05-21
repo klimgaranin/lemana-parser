@@ -56,34 +56,27 @@ DEFAULT_CATALOG_URL = (
 CONFIG: Config = {
     # ── Целевой каталог ──────────────────────────────────────────────────────
     "catalog_first_page_url": _env_str("LEMANA_CATALOG_URL", DEFAULT_CATALOG_URL),
-
     # ── Вывод ────────────────────────────────────────────────────────────────
-    "output_dir":      _env_str("LEMANA_OUTPUT_DIR", "output"),
+    "output_dir": _env_str("LEMANA_OUTPUT_DIR", "output"),
     "output_filename": _env_str("LEMANA_OUTPUT_FILENAME", "lemana_result.xlsx"),
-
     # ── Ограничители ─────────────────────────────────────────────────────────
-    "max_products":     _env_int("LEMANA_MAX_PRODUCTS", 100000),
+    "max_products": _env_int("LEMANA_MAX_PRODUCTS", 100000),
     "max_pages_safety": _env_int("LEMANA_MAX_PAGES_SAFETY", 8000),
-
     # ── Параллелизм ──────────────────────────────────────────────────────────
     "catalog_concurrency": _env_int("LEMANA_CATALOG_CONCURRENCY", 8),
     "product_concurrency": _env_int("LEMANA_PRODUCT_CONCURRENCY", 1),
-
     # ── Таймауты (секунды) ───────────────────────────────────────────────────
     "catalog_timeout": _env_int("LEMANA_CATALOG_TIMEOUT", 25),
     "product_timeout": _env_int("LEMANA_PRODUCT_TIMEOUT", 30),
-
     # ── Повторы при ошибке ───────────────────────────────────────────────────
-    "max_retries":   _env_int("LEMANA_MAX_RETRIES", 4),
+    "max_retries": _env_int("LEMANA_MAX_RETRIES", 4),
     "retry_backoff": _env_float("LEMANA_RETRY_BACKOFF", 0.6),
-
     # ── Адаптивная пауза между батчами (мс) ─────────────────────────────────
     "min_sleep_ms": _env_int("LEMANA_MIN_SLEEP_MS", 1500),
     "max_sleep_ms": _env_int("LEMANA_MAX_SLEEP_MS", 3500),
     "product_batch_sleep": _env_float("LEMANA_PRODUCT_BATCH_SLEEP", 4.0),
-
     # ── Cookie (Playwright заполняет автоматически) ──────────────────────────
-    "cookie": os.getenv("LEMANA_COOKIE", "").strip().strip('"\''),
+    "cookie": os.getenv("LEMANA_COOKIE", "").strip().strip("\"'"),
 }
 
 # Базовые колонки — всегда первые в xlsx

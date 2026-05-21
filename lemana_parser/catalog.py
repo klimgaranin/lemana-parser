@@ -21,18 +21,18 @@ from bs4 import BeautifulSoup
 
 from lemana_parser.config import CONFIG
 from lemana_parser.http_utils import compute_adaptive_sleep, fetch_with_retry
+from lemana_parser.models import CatalogItem
 from lemana_parser.parsers.html import (
-    strip_html,
+    _extract_price_integer_primary,
     decode_html,
-    remove_spaces,
-    match1,
     extract_article_from_url,
     extract_base_url,
-    normalize_url,
     format_fixed,
-    _extract_price_integer_primary,
+    match1,
+    normalize_url,
+    remove_spaces,
+    strip_html,
 )
-from lemana_parser.models import CatalogItem
 
 logger = logging.getLogger("catalog")
 
@@ -40,6 +40,7 @@ logger = logging.getLogger("catalog")
 # ─────────────────────────────────────────────────────────────────────────────
 # URL helpers
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def _build_page_url(page: int) -> str:
     """
@@ -61,6 +62,7 @@ def _build_page_url(page: int) -> str:
 # Пагинация и счётчики
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def _parse_products_count(html: str) -> int:
     """
     Пытаемся вытащить totalCount из HTML.
@@ -71,7 +73,7 @@ def _parse_products_count(html: str) -> int:
     patterns = [
         r'data-qa-products-count=["\'](\d+)["\']',
         r'data-qa=["\']products-count["\'][^>]*>\s*(\d+)\s*<',
-        r'(\d+)\s*товар(?:ов|а)?',
+        r"(\d+)\s*товар(?:ов|а)?",
     ]
     for pattern in patterns:
         m = re.search(pattern, html, re.I)
@@ -90,13 +92,14 @@ def _parse_last_page_from_html(html: str) -> int:
     if not html:
         return 0
 
-    pages = [int(x) for x in re.findall(r'[?&]page=(\d+)', html, re.I)]
+    pages = [int(x) for x in re.findall(r"[?&]page=(\d+)", html, re.I)]
     return max(pages) if pages else 0
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Выделение зоны товаров
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def _extract_products_list_scope(html: str) -> str:
     """
@@ -119,12 +122,12 @@ def _extract_products_list_scope(html: str) -> str:
         return html
 
     start = start_m.start()
-    tail = html[start_m.end():]
+    tail = html[start_m.end() :]
 
     end_markers = [
         r'data-qa=["\']pagination["\']',
         r'data-qa=["\']catalog-bottom["\']',
-        r'<footer[\s>]',
+        r"<footer[\s>]",
     ]
 
     end = len(html)
@@ -143,6 +146,7 @@ def _extract_products_list_scope(html: str) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 # Парсинг карточек
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def _text_from_node(node) -> str:
     return decode_html(node.get_text(" ", strip=True)) if node else ""
@@ -196,9 +200,8 @@ def _extract_catalog_items_dom(scope: str, base_url: str) -> list[CatalogItem]:
             continue
         seen_urls.add(url)
 
-        name_node = (
-            node.find(attrs={"data-qa": "product-name"})
-            or node.find(attrs={"itemprop": "name"})
+        name_node = node.find(attrs={"data-qa": "product-name"}) or node.find(
+            attrs={"itemprop": "name"}
         )
         name = _text_from_node(name_node) or _attr_from_node(link, "aria-label")
 
@@ -326,6 +329,7 @@ def _extract_catalog_items(html: str, base_url: str) -> list[CatalogItem]:
 # Сетевые вызовы
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 async def _fetch_page(
     session,
     page: int,
@@ -358,6 +362,7 @@ async def _fetch_page(
 # Основной сбор
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 async def collect_catalog_items(session) -> list[CatalogItem]:
     """
     Собирает все товары каталога.
@@ -374,9 +379,7 @@ async def collect_catalog_items(session) -> list[CatalogItem]:
         tag="CATALOG p=1",
     )
     if not html1:
-        raise RuntimeError(
-            "Страница 1 недоступна. Проверь URL, cookie и http_utils.py"
-        )
+        raise RuntimeError("Страница 1 недоступна. Проверь URL, cookie и http_utils.py")
 
     items1 = _extract_catalog_items(html1, base_url)
     if not items1:
@@ -412,6 +415,7 @@ async def collect_catalog_items(session) -> list[CatalogItem]:
 
     try:
         from tqdm import tqdm
+
         pbar = tqdm(total=max(total_pages - 1, 0), desc="Каталог", unit="стр")
     except Exception:
         pbar = None
@@ -424,7 +428,7 @@ async def collect_catalog_items(session) -> list[CatalogItem]:
             return_exceptions=True,
         )
 
-        for page, page_items in zip(page_numbers, results):
+        for page, page_items in zip(page_numbers, results, strict=False):
             if isinstance(page_items, Exception):
                 logger.exception("page=%d: необработанная ошибка батча", page, exc_info=page_items)
                 continue
@@ -446,12 +450,12 @@ async def collect_catalog_items(session) -> list[CatalogItem]:
         batch_size = max(1, CONFIG["catalog_concurrency"] * 2)
 
         for start in range(0, len(pages), batch_size):
-            batch = pages[start:start + batch_size]
+            batch = pages[start : start + batch_size]
             await fetch_batch(batch)
 
             if len(items_map) >= CONFIG["max_products"]:
                 logger.info("Достигнут max_products=%d", CONFIG["max_products"])
-                result = list(items_map.values())[:CONFIG["max_products"]]
+                result = list(items_map.values())[: CONFIG["max_products"]]
                 if pbar:
                     pbar.close()
                 return result
@@ -483,7 +487,7 @@ async def collect_catalog_items(session) -> list[CatalogItem]:
     if pbar:
         pbar.close()
 
-    result = list(items_map.values())[:CONFIG["max_products"]]
+    result = list(items_map.values())[: CONFIG["max_products"]]
     logger.info(
         "Итого собрано: %d товаров%s",
         len(result),

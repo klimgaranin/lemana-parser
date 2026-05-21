@@ -1,6 +1,5 @@
 from lemana_parser.cli import main
 
-
 if __name__ == "__main__":
     import sys
 
@@ -8,4 +7,3 @@ if __name__ == "__main__":
     if sys.stdin.isatty() and "--no-pause" not in sys.argv:
         input("\nНажми Enter для выхода...")
     sys.exit(exit_code)
-

@@ -134,7 +134,7 @@ scripts/test_dev.sh
 
 Use `.venv\Scripts\python.exe main.py --check-cookie --no-pause` or `.venv\Scripts\python.exe check_cookie.py` to diagnose authentication. Windows users can also run `get_cookie.bat`.
 
-Use `scripts\check_win.bat` before commits and `scripts\clean_dev.bat` after local runs if generated artifacts appear.
+Install dev tools with `.venv\Scripts\python.exe -m pip install -r requirements-dev.txt`. Use `scripts\lint_win.bat`, `scripts\format_win.bat`, and `scripts\check_win.bat` before commits. Use `scripts\clean_dev.bat` after local runs if generated artifacts appear.
 
 ## Coding Style & Naming Conventions
 

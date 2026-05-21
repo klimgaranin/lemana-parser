@@ -9,11 +9,5 @@ if not exist ".venv\Scripts\python.exe" (
     exit /b 1
 )
 
-".venv\Scripts\python.exe" -m compileall -q main.py check_cookie.py cookie_grabber.py lemana_parser tests
-if errorlevel 1 exit /b %ERRORLEVEL%
-
 ".venv\Scripts\python.exe" -m ruff check . --no-cache
-if errorlevel 1 exit /b %ERRORLEVEL%
-
-".venv\Scripts\python.exe" -m unittest discover -s tests
 exit /b %ERRORLEVEL%

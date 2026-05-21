@@ -1,11 +1,12 @@
 """HTML parsing and formatting helpers."""
+
 import re
 from html import unescape
 
 from bs4 import BeautifulSoup
 
-
 # ─── Строковые хелперы ────────────────────────────────────────────────────────
+
 
 def strip_html(s: str) -> str:
     """Убираем все HTML-теги, схлопываем пробелы."""
@@ -26,6 +27,7 @@ def match1(text: str, pattern: str, flags: int = re.IGNORECASE | re.DOTALL) -> s
 
 
 # ─── Форматирование чисел ─────────────────────────────────────────────────────
+
 
 def normalize_number(s: str) -> str:
     t = remove_spaces(str(s or "")).replace(",", ".")
@@ -50,6 +52,7 @@ def format_var(raw: str) -> str:
 
 # ─── URL хелперы ─────────────────────────────────────────────────────────────
 
+
 def extract_article_from_url(url: str) -> str:
     m = re.search(r"(\d{5,})/?$", url or "")
     return m.group(1) if m else ""
@@ -71,6 +74,7 @@ def normalize_url(href_or_url: str, base_url: str) -> str:
 
 # ─── Парсинг цены ─────────────────────────────────────────────────────────────
 
+
 def _extract_price_integer_primary(html: str) -> str:
     """Цена только из span с style=var(--text-primary) — актуальная, не перечёркнутая."""
     soup = BeautifulSoup(html or "", "html.parser")
@@ -86,7 +90,8 @@ def _extract_price_integer_primary(html: str) -> str:
     m = re.search(
         r'<span[^>]*data-testid=["\']price-integer["\'][^>]*'
         r'style=["\'][^"\']*var\(--text-primary\)[^"\']*["\'][^>]*>([\s\S]*?)</span>',
-        html or "", re.I
+        html or "",
+        re.I,
     )
     if not m:
         return ""
@@ -99,15 +104,16 @@ def parse_price_from_html(html: str) -> str:
         return ""
 
     soup = BeautifulSoup(html or "", "html.parser")
-    frac_node = (
-        soup.find(attrs={"data-testid": "price-fraction"})
-        or soup.find(attrs={"data-testid": "price-decimal"})
+    frac_node = soup.find(attrs={"data-testid": "price-fraction"}) or soup.find(
+        attrs={"data-testid": "price-decimal"}
     )
     frac_raw = strip_html(frac_node.get_text(" ", strip=True)) if frac_node else ""
     if not frac_raw:
         frac_raw = (
             strip_html(match1(html, r'data-testid=["\']price-fraction["\'][^>]*>([\s\S]*?)</span>'))
-            or strip_html(match1(html, r'data-testid=["\']price-decimal["\'][^>]*>([\s\S]*?)</span>'))
+            or strip_html(
+                match1(html, r'data-testid=["\']price-decimal["\'][^>]*>([\s\S]*?)</span>')
+            )
         ).strip()
 
     if not frac_raw:
@@ -122,11 +128,11 @@ def parse_price_from_html(html: str) -> str:
 
 # ─── Парсинг изображения ──────────────────────────────────────────────────────
 
+
 def extract_main_image(html: str) -> str:
     soup = BeautifulSoup(html or "", "html.parser")
-    meta = (
-        soup.find("meta", attrs={"property": "og:image"})
-        or soup.find(attrs={"itemprop": "image", "content": True})
+    meta = soup.find("meta", attrs={"property": "og:image"}) or soup.find(
+        attrs={"itemprop": "image", "content": True}
     )
     if meta and meta.get("content"):
         return str(meta["content"])
@@ -143,7 +149,8 @@ def extract_main_image(html: str) -> str:
         return item
     for m in re.finditer(
         r'https?://[^"\'<> \n\r\t]+?\.(?:jpg|jpeg|png|webp)(?:\?[^"\'<> \n\r\t]*)?',
-        html or "", re.I
+        html or "",
+        re.I,
     ):
         u = m.group(0)
         if re.search(r"logo|icon|sprite|favicon", u, re.I):
@@ -154,11 +161,12 @@ def extract_main_image(html: str) -> str:
 
 # ─── Парсинг характеристик ────────────────────────────────────────────────────
 
+
 def extract_characteristics_section(html: str) -> str:
     idx = re.search(r'id=["\']characteristics["\']', html or "", re.I)
     if not idx:
         return ""
-    tail = html[idx.start():]
+    tail = html[idx.start() :]
     end = re.search(r"</section>", tail, re.I)
     return tail[: end.start() + 10] if end else tail[:20000]
 
@@ -171,7 +179,10 @@ def extract_all_characteristics(html: str) -> dict[str, str]:
     for node in section.find_all(attrs={"data-qa": "characteristics-list-item"}):
         values = [part.get_text(" ", strip=True) for part in node.find_all("div", recursive=False)]
         if len(values) < 2:
-            values = [part.get_text(" ", strip=True) for part in node.find_all(["dt", "dd"], recursive=False)]
+            values = [
+                part.get_text(" ", strip=True)
+                for part in node.find_all(["dt", "dd"], recursive=False)
+            ]
         if len(values) >= 2:
             label = re.sub(r"\s+", " ", decode_html(values[0])).strip()
             value = re.sub(r"\s+", " ", decode_html(values[1])).strip()
@@ -184,8 +195,9 @@ def extract_all_characteristics(html: str) -> dict[str, str]:
     section = extract_characteristics_section(html) or (html or "")
     for m in re.finditer(
         r'data-qa=["\']characteristics-list-item["\'][^>]*>'
-        r'\s*<div[^>]*>([\s\S]*?)</div>\s*<div[^>]*>([\s\S]*?)</div>',
-        section, re.I
+        r"\s*<div[^>]*>([\s\S]*?)</div>\s*<div[^>]*>([\s\S]*?)</div>",
+        section,
+        re.I,
     ):
         label = strip_html(m.group(1)).strip()
         value = re.sub(r"\s+", " ", strip_html(m.group(2))).strip()
