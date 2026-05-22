@@ -3,6 +3,7 @@
 import argparse
 import os
 import re
+from urllib.parse import urljoin
 
 from lemana_parser.config import CONFIG, ConfigError, validate_config
 from lemana_parser.http_utils import build_headers, describe_cookie
@@ -77,6 +78,36 @@ def _print_cookie_parts(cookie: str) -> None:
         print(f"  {status} {key}: {preview}")
 
 
+def _request_html(session, url: str, cookie: str):
+    return session.get(
+        url,
+        headers=build_headers(cookie=cookie),
+        timeout=20,
+        allow_redirects=True,
+    )
+
+
+def _extract_first_product_url(html: str, base_url: str) -> str:
+    match = re.search(r'href=["\']([^"\']*/product/[^"\']+)["\']', html, re.I)
+    if not match:
+        match = re.search(r'href=["\']([^"\']*/catalogue/[^"\']+)["\']', html, re.I)
+    return urljoin(base_url, match.group(1)) if match else ""
+
+
+def _print_single_response(label: str, resp, html: str) -> None:
+    cards = re.findall(r'data-product-id=["\']([^"\']+)["\']', html)
+    has_next_data = bool(re.search(r'<script[^>]+id=["\']__NEXT_DATA__["\']', html))
+    has_products_list = bool(re.search(r'data-qa=["\']products-list["\']', html))
+
+    print(f"\n{label}")
+    print(f"HTTP статус:    {resp.status_code}")
+    print(f"Итоговый URL:   {getattr(resp, 'url', '')}")
+    print(f"Размер ответа:  {len(html)} символов")
+    print(f"__NEXT_DATA__:  {'✅ найден' if has_next_data else '❌ НЕ найден'}")
+    print(f"products-list:  {'✅ найден' if has_products_list else '❌ НЕ найден'}")
+    print(f"Карточек:       {len(cards)}")
+
+
 def _print_response_diagnostics(url: str, cookie: str) -> None:
     print("\n" + "=" * 60)
     print("ШАГ 3: Тестовый HTTP-запрос")
@@ -88,29 +119,27 @@ def _print_response_diagnostics(url: str, cookie: str) -> None:
         print("❌ curl_cffi не установлен. Запусти: pip install -r requirements.txt")
         return
 
-    headers = build_headers(cookie=cookie)
-
     print(f"URL: {url}")
     print(f"Cookie: {describe_cookie(cookie)}")
 
     try:
         with CurlSession(impersonate="chrome124", verify=False) as session:
-            resp = session.get(url, headers=headers, timeout=20, allow_redirects=True)
+            resp = _request_html(session, url, cookie)
+            html = resp.text or ""
+            cards = re.findall(r'data-product-id=["\']([^"\']+)["\']', html)
+            _print_single_response("Каталог:", resp, html)
+
+            product_url = _extract_first_product_url(html, url)
+            if product_url:
+                print(f"\nПервая карточка: {product_url}")
+                product_resp = _request_html(session, product_url, cookie)
+                product_html = product_resp.text or ""
+                _print_single_response("Карточка товара:", product_resp, product_html)
+            else:
+                print("\n⚠️  Не удалось найти ссылку на первую карточку товара в каталоге.")
     except Exception as exc:
         print(f"❌ Ошибка запроса: {type(exc).__name__}: {exc}")
         return
-
-    html = resp.text or ""
-    cards = re.findall(r'data-product-id=["\']([^"\']+)["\']', html)
-    has_next_data = bool(re.search(r'<script[^>]+id=["\']__NEXT_DATA__["\']', html))
-    has_products_list = bool(re.search(r'data-qa=["\']products-list["\']', html))
-
-    print(f"\nHTTP статус:    {resp.status_code}")
-    print(f"Итоговый URL:   {getattr(resp, 'url', '')}")
-    print(f"Размер ответа:  {len(html)} символов")
-    print(f"__NEXT_DATA__:  {'✅ найден' if has_next_data else '❌ НЕ найден'}")
-    print(f"products-list:  {'✅ найден' if has_products_list else '❌ НЕ найден'}")
-    print(f"Карточек:       {len(cards)}")
 
     if resp.status_code == 401:
         print("\n⚠️  401: cookie отклонена сервером.")

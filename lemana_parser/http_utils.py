@@ -23,6 +23,11 @@ logger = logging.getLogger("http_utils")
 
 MIN_HTML_CHARS = 200
 RETRYABLE_STATUS_CODES = {403, 408, 429, 500, 502, 503, 504}
+CHROME_124_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/124.0.0.0 Safari/537.36"
+)
 
 
 def describe_cookie(cookie: str) -> str:
@@ -43,11 +48,17 @@ def build_headers(
     - Cookie берём из аргумента или CONFIG, если она уже получена.
     """
     headers = {
+        "User-Agent": CHROME_124_USER_AGENT,
         "Accept": (
             "text/html,application/xhtml+xml,application/xml;"
             "q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8"
         ),
         "Accept-Language": "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "same-origin",
+        "Sec-Fetch-User": "?1",
     }
     cookie_value = CONFIG["cookie"] if cookie is None else cookie
     if cookie_value:

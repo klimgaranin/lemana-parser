@@ -13,6 +13,13 @@ class CookieDiagnosticsTests(unittest.TestCase):
 
         self.assertEqual(check_cookie._read_raw_cookie_from_env(env_path), "a=b; c=d#kept")
 
+    def test_extract_first_product_url_prefers_product_link(self):
+        html = '<a href="/product/test-product-123/">Товар</a>'
+
+        url = check_cookie._extract_first_product_url(html, "https://lemanapro.ru/catalogue/x/")
+
+        self.assertEqual(url, "https://lemanapro.ru/product/test-product-123/")
+
     def test_main_returns_config_error_code(self):
         with patch(
             "lemana_parser.diagnostics.check_cookie.validate_config",

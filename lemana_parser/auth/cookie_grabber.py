@@ -9,6 +9,8 @@ from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
+from lemana_parser.http_utils import CHROME_124_USER_AGENT
+
 TARGET_HOST = "lemanapro.ru"
 DEBUG_PORT = 9223
 DEFAULT_URL = f"https://{TARGET_HOST}/catalogue/"
@@ -167,6 +169,8 @@ def _start_chrome(chrome: str, url: str) -> subprocess.Popen | None:
             f"--remote-debugging-port={DEBUG_PORT}",
             f"--user-data-dir={PROFILE_DIR.resolve()}",
             "--remote-allow-origins=*",
+            f"--user-agent={CHROME_124_USER_AGENT}",
+            "--lang=ru-RU",
             "--no-first-run",
             "--disable-default-apps",
             "--new-window",

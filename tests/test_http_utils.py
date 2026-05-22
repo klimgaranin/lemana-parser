@@ -33,7 +33,9 @@ class HttpUtilsTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(headers["Cookie"], "a=b")
         self.assertEqual(headers["Referer"], "https://lemanapro.ru/catalogue/")
+        self.assertIn("Chrome/124.0.0.0", headers["User-Agent"])
         self.assertIn("Accept-Language", headers)
+        self.assertEqual(headers["Sec-Fetch-Dest"], "document")
 
     async def test_fetch_with_retry_returns_text_on_success(self):
         session = SimpleNamespace(get=AsyncMock(return_value=FakeResponse(200, "x" * 250)))
