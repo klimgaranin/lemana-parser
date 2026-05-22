@@ -11,3 +11,5 @@ dist/
 build/
 *.spec
 .ruff_cache/
+chrome_cdp_session/
+.chrome_cdp_session/

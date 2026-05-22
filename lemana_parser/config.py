@@ -64,7 +64,7 @@ CONFIG: Config = {
     "max_pages_safety": _env_int("LEMANA_MAX_PAGES_SAFETY", 8000),
     # ── Параллелизм ──────────────────────────────────────────────────────────
     "catalog_concurrency": _env_int("LEMANA_CATALOG_CONCURRENCY", 8),
-    "product_concurrency": _env_int("LEMANA_PRODUCT_CONCURRENCY", 1),
+    "product_concurrency": _env_int("LEMANA_PRODUCT_CONCURRENCY", 6),
     # ── Таймауты (секунды) ───────────────────────────────────────────────────
     "catalog_timeout": _env_int("LEMANA_CATALOG_TIMEOUT", 25),
     "product_timeout": _env_int("LEMANA_PRODUCT_TIMEOUT", 30),
@@ -74,7 +74,7 @@ CONFIG: Config = {
     # ── Адаптивная пауза между батчами (мс) ─────────────────────────────────
     "min_sleep_ms": _env_int("LEMANA_MIN_SLEEP_MS", 1500),
     "max_sleep_ms": _env_int("LEMANA_MAX_SLEEP_MS", 3500),
-    "product_batch_sleep": _env_float("LEMANA_PRODUCT_BATCH_SLEEP", 4.0),
+    "product_batch_sleep": _env_float("LEMANA_PRODUCT_BATCH_SLEEP", 0.0),
     # ── Cookie (Playwright заполняет автоматически) ──────────────────────────
     "cookie": os.getenv("LEMANA_COOKIE", "").strip().strip("\"'"),
 }

@@ -140,7 +140,7 @@ Install dev tools with `.venv\Scripts\python.exe -m pip install -r requirements-
 
 Follow standard Python style with 4-space indentation, descriptive snake_case names, and small functions focused on parsing, fetching, or writing. Keep async network code in async functions and preserve the existing split between catalog collection, product parsing, configuration, and output writing. User-facing messages are mostly Russian; keep new CLI/log messages consistent.
 
-No formatter or linter is currently configured. If adding one, document it and avoid broad mechanical rewrites in unrelated files. Prefer clean modular boundaries and consistent naming over large mixed-purpose files.
+Ruff is configured in `pyproject.toml`. Use `scripts\lint_win.bat` to check style and `scripts\format_win.bat` to format touched files. Prefer clean modular boundaries and consistent naming over large mixed-purpose files.
 
 ## Testing Guidelines
 

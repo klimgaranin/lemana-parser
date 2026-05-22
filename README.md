@@ -56,7 +56,7 @@ run_win.bat
 Параметры можно передавать без редактирования `.env`:
 
 ```bat
-run_win.bat --url "https://lemanapro.ru/catalogue/..." --max-products 100 --product-concurrency 1
+run_win.bat --url "https://lemanapro.ru/catalogue/..." --max-products 100 --product-concurrency 6
 ```
 
 Полезные параметры:
@@ -80,7 +80,24 @@ get_cookie.bat
 .venv\Scripts\python.exe main.py --check-cookie --no-pause
 ```
 
+`get_cookie.bat` открывает Chrome с debug-портом и ждёт до 120 секунд. Если сайт показывает Qrator-проверку, пройди её в открытом окне Chrome и дождись сохранения cookie в `.env`.
+
 Если сайт отдаёт `403`, значит нужна актуальная cookie. Скопируй заголовок `cookie` из браузера и вставь его в `.env` как `LEMANA_COOKIE`.
+
+## Скорость и антибот-ограничения
+
+По умолчанию карточки товаров грузятся в 6 параллельных потоков без дополнительной паузы между батчами:
+
+```env
+LEMANA_PRODUCT_CONCURRENCY=6
+LEMANA_PRODUCT_BATCH_SLEEP=0.0
+```
+
+Если появляются `403`, `429` или много `fetch_failed`, снизь нагрузку:
+
+```bat
+run_win.bat --no-playwright --product-concurrency 2 --product-batch-sleep 1.5
+```
 
 ## Тесты
 
