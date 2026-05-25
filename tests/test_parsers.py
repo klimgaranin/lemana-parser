@@ -3,12 +3,18 @@ import unittest
 from unittest.mock import AsyncMock, patch
 
 from lemana_parser.catalog import _extract_catalog_items
+from lemana_parser.http_utils import FetchResult
 from lemana_parser.parsers.html import (
     extract_all_characteristics,
     extract_main_image,
     parse_price_from_html,
 )
-from lemana_parser.products import _fetch_product, _parse_product, summarize_products
+from lemana_parser.products import (
+    _fetch_product,
+    _next_throttle_state,
+    _parse_product,
+    summarize_products,
+)
 
 
 class ParserTests(unittest.TestCase):
@@ -101,7 +107,10 @@ class ParserTests(unittest.TestCase):
 
 class ProductFetchTests(unittest.IsolatedAsyncioTestCase):
     async def test_fetch_product_returns_failed_status_on_empty_response(self):
-        with patch("lemana_parser.products.fetch_with_retry", new=AsyncMock(return_value=None)):
+        with patch(
+            "lemana_parser.products.fetch_with_retry_result",
+            new=AsyncMock(return_value=FetchResult(None, 403, 4, retryable_hits=4)),
+        ):
             product = await _fetch_product(
                 object(),
                 {
@@ -114,10 +123,22 @@ class ProductFetchTests(unittest.IsolatedAsyncioTestCase):
                 sem=asyncio.Semaphore(1),
             )
 
-        self.assertEqual(product["status"], "fetch_failed")
+        self.assertEqual(product["status"], "http_403")
         self.assertEqual(product["article"], "123456")
         self.assertEqual(product["name"], "Название из каталога")
-        self.assertIn("Не удалось загрузить", product["error"])
+        self.assertIn("HTTP 403", product["error"])
+
+    def test_adaptive_throttle_slows_down_on_pressure(self):
+        batch_size, sleep_sec, stable = _next_throttle_state(
+            batch_size=4,
+            sleep_sec=0.5,
+            stable_batches=2,
+            pressure_count=1,
+        )
+
+        self.assertEqual(batch_size, 2)
+        self.assertGreater(sleep_sec, 0.5)
+        self.assertEqual(stable, 0)
 
 
 if __name__ == "__main__":

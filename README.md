@@ -56,7 +56,7 @@ run_win.bat
 Параметры можно передавать без редактирования `.env`:
 
 ```bat
-run_win.bat --url "https://lemanapro.ru/catalogue/..." --max-products 100 --product-concurrency 6
+run_win.bat --url "https://lemanapro.ru/catalogue/..." --max-products 100 --product-concurrency 4
 ```
 
 Полезные параметры:
@@ -66,6 +66,8 @@ run_win.bat --url "https://lemanapro.ru/catalogue/..." --max-products 100 --prod
 - `--max-products` — ограничение количества товаров.
 - `--catalog-concurrency` и `--product-concurrency` — параллельность запросов.
 - `--product-batch-sleep` — пауза между батчами карточек.
+- `--product-max-batch-sleep` — верхняя граница адаптивной паузы при `403/429`.
+- `--browser-impersonate` — профиль `curl_cffi`, по умолчанию `chrome`.
 - `--cookie` — cookie прямо из командной строки.
 - `--no-playwright` — не открывать браузер, использовать cookie из `.env` или `--cookie`.
 - `--check-cookie` — запустить диагностику cookie через `main.py`.
@@ -80,23 +82,25 @@ get_cookie.bat
 .venv\Scripts\python.exe main.py --check-cookie --no-pause
 ```
 
-`get_cookie.bat` открывает Chrome с debug-портом и ждёт до 120 секунд. Если сайт показывает Qrator-проверку, пройди её в открытом окне Chrome и дождись сохранения cookie в `.env`.
+`get_cookie.bat` открывает Chrome с debug-портом во временном чистом профиле и ждёт до 120 секунд. Если сайт показывает Qrator-проверку, пройди её в открытом окне Chrome и дождись сохранения cookie в `.env`.
 
 Если сайт отдаёт `403`, значит нужна актуальная cookie. Скопируй заголовок `cookie` из браузера и вставь его в `.env` как `LEMANA_COOKIE`.
 
 ## Скорость и антибот-ограничения
 
-По умолчанию карточки товаров грузятся в 6 параллельных потоков без дополнительной паузы между батчами:
+По умолчанию карточки товаров стартуют в 4 параллельных потока с малой паузой. Если сервер начинает отвечать `403/429`, парсер сам уменьшает размер батча и увеличивает паузу. После стабильных батчей он постепенно ускоряется обратно:
 
 ```env
-LEMANA_PRODUCT_CONCURRENCY=6
-LEMANA_PRODUCT_BATCH_SLEEP=0.0
+LEMANA_PRODUCT_CONCURRENCY=4
+LEMANA_PRODUCT_BATCH_SLEEP=0.5
+LEMANA_PRODUCT_MAX_BATCH_SLEEP=8.0
+LEMANA_PRODUCT_ADAPTIVE_THROTTLE=true
 ```
 
-Если появляются `403`, `429` или много `fetch_failed`, снизь нагрузку:
+Если даже адаптивный режим часто ловит `403`, запусти консервативно:
 
 ```bat
-run_win.bat --no-playwright --product-concurrency 2 --product-batch-sleep 1.5
+run_win.bat --no-playwright --product-concurrency 2 --product-batch-sleep 2 --product-max-batch-sleep 12
 ```
 
 ## Тесты

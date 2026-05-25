@@ -20,6 +20,9 @@ class Product(TypedDict, total=False):
     price: str
     image: str
     characteristics: dict[str, str]
+    _http_status: int
+    _http_attempts: int
+    _retryable_hits: int
 
 
 class ProductSummary(TypedDict):

@@ -48,6 +48,15 @@ def _parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument(
         "--product-batch-sleep", type=float, help="Пауза между батчами карточек, сек"
     )
+    parser.add_argument(
+        "--product-max-batch-sleep",
+        type=float,
+        help="Максимальная адаптивная пауза между батчами карточек, сек",
+    )
+    parser.add_argument(
+        "--browser-impersonate",
+        help="Профиль curl_cffi impersonate, например chrome, chrome124, safari",
+    )
     parser.add_argument("--cookie", help="Cookie для запросов, переопределяет LEMANA_COOKIE")
     parser.add_argument(
         "--no-playwright",
@@ -74,6 +83,8 @@ def _apply_cli_overrides(args: argparse.Namespace) -> None:
         catalog_concurrency=args.catalog_concurrency,
         product_concurrency=args.product_concurrency,
         product_batch_sleep=args.product_batch_sleep,
+        product_max_batch_sleep=args.product_max_batch_sleep,
+        browser_impersonate=args.browser_impersonate,
         cookie=args.cookie.strip().strip("\"'") if args.cookie else None,
     )
 

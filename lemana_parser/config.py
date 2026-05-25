@@ -46,6 +46,19 @@ def _env_float(name: str, default: float) -> float:
         return default
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None or not value.strip():
+        return default
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "y", "on", "да"}:
+        return True
+    if normalized in {"0", "false", "no", "n", "off", "нет"}:
+        return False
+    _CONFIG_ERRORS.append(f"{name} должен быть boolean: true/false, сейчас: {value!r}")
+    return default
+
+
 DEFAULT_CATALOG_URL = (
     "https://lemanapro.ru/catalogue/svetilniki-dlya-vannoy/"
     "?deliveryType=%D0%A1%D0%B0%D0%BC%D0%BE%D0%B2%D1%8B%D0%B2%D0%BE%D0%B7"
@@ -64,7 +77,7 @@ CONFIG: Config = {
     "max_pages_safety": _env_int("LEMANA_MAX_PAGES_SAFETY", 8000),
     # ── Параллелизм ──────────────────────────────────────────────────────────
     "catalog_concurrency": _env_int("LEMANA_CATALOG_CONCURRENCY", 8),
-    "product_concurrency": _env_int("LEMANA_PRODUCT_CONCURRENCY", 6),
+    "product_concurrency": _env_int("LEMANA_PRODUCT_CONCURRENCY", 4),
     # ── Таймауты (секунды) ───────────────────────────────────────────────────
     "catalog_timeout": _env_int("LEMANA_CATALOG_TIMEOUT", 25),
     "product_timeout": _env_int("LEMANA_PRODUCT_TIMEOUT", 30),
@@ -74,7 +87,12 @@ CONFIG: Config = {
     # ── Адаптивная пауза между батчами (мс) ─────────────────────────────────
     "min_sleep_ms": _env_int("LEMANA_MIN_SLEEP_MS", 1500),
     "max_sleep_ms": _env_int("LEMANA_MAX_SLEEP_MS", 3500),
-    "product_batch_sleep": _env_float("LEMANA_PRODUCT_BATCH_SLEEP", 0.0),
+    "product_batch_sleep": _env_float("LEMANA_PRODUCT_BATCH_SLEEP", 0.5),
+    "product_max_batch_sleep": _env_float("LEMANA_PRODUCT_MAX_BATCH_SLEEP", 8.0),
+    "product_adaptive_throttle": _env_bool("LEMANA_PRODUCT_ADAPTIVE_THROTTLE", True),
+    "product_recovery_batches": _env_int("LEMANA_PRODUCT_RECOVERY_BATCHES", 3),
+    # ── HTTP fingerprint ────────────────────────────────────────────────────
+    "browser_impersonate": _env_str("LEMANA_BROWSER_IMPERSONATE", "chrome"),
     # ── Cookie (Playwright заполняет автоматически) ──────────────────────────
     "cookie": os.getenv("LEMANA_COOKIE", "").strip().strip("\"'"),
 }
@@ -123,6 +141,12 @@ def validate_config(config: Config = CONFIG) -> None:
 
     if config["product_batch_sleep"] < 0:
         raise ConfigError("LEMANA_PRODUCT_BATCH_SLEEP должен быть >= 0")
+
+    if config["product_max_batch_sleep"] < config["product_batch_sleep"]:
+        raise ConfigError("LEMANA_PRODUCT_MAX_BATCH_SLEEP должен быть >= LEMANA_PRODUCT_BATCH_SLEEP")
+
+    if config["product_recovery_batches"] < 1:
+        raise ConfigError("LEMANA_PRODUCT_RECOVERY_BATCHES должен быть >= 1")
 
     if config["min_sleep_ms"] < 0 or config["max_sleep_ms"] < 0:
         raise ConfigError("LEMANA_MIN_SLEEP_MS и LEMANA_MAX_SLEEP_MS должны быть >= 0")

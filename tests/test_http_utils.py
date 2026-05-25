@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 from lemana_parser.config import CONFIG
-from lemana_parser.http_utils import build_headers, fetch_with_retry
+from lemana_parser.http_utils import build_headers, fetch_with_retry, fetch_with_retry_result
 
 
 class FakeResponse:
@@ -33,7 +33,6 @@ class HttpUtilsTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(headers["Cookie"], "a=b")
         self.assertEqual(headers["Referer"], "https://lemanapro.ru/catalogue/")
-        self.assertIn("Chrome/124.0.0.0", headers["User-Agent"])
         self.assertIn("Accept-Language", headers)
         self.assertEqual(headers["Sec-Fetch-Dest"], "document")
 
@@ -69,6 +68,21 @@ class HttpUtilsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(text, "y" * 250)
         self.assertEqual(session.get.await_count, 2)
         sleep_mock.assert_awaited_once()
+
+    async def test_fetch_with_retry_result_reports_retryable_hits(self):
+        session = SimpleNamespace(
+            get=AsyncMock(side_effect=[FakeResponse(403, "blocked"), FakeResponse(200, "z" * 250)])
+        )
+        CONFIG["max_retries"] = 2
+        CONFIG["retry_backoff"] = 0.1
+
+        with patch("lemana_parser.http_utils.asyncio.sleep", new=AsyncMock()):
+            result = await fetch_with_retry_result(session, "https://lemanapro.ru/product/test/", 5)
+
+        self.assertEqual(result.html, "z" * 250)
+        self.assertEqual(result.status_code, 200)
+        self.assertEqual(result.attempts, 2)
+        self.assertEqual(result.retryable_hits, 1)
 
 
 if __name__ == "__main__":

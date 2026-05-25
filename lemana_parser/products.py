@@ -4,10 +4,11 @@ products.py — Параллельная загрузка и парсинг ка
 
 import asyncio
 import logging
+import time
 from collections import Counter
 
 from lemana_parser.config import CONFIG
-from lemana_parser.http_utils import fetch_with_retry
+from lemana_parser.http_utils import fetch_with_retry_result
 from lemana_parser.models import CatalogItem, Product, ProductSummary
 from lemana_parser.parsers.html import (
     extract_all_characteristics,
@@ -68,7 +69,7 @@ async def _fetch_product(session, item: CatalogItem, sem: asyncio.Semaphore) -> 
     async with sem:
         tag = f"PROD_{item.get('article', item['url'][-20:])}"
         try:
-            html = await fetch_with_retry(
+            fetch_result = await fetch_with_retry_result(
                 session,
                 item["url"],
                 CONFIG["product_timeout"],
@@ -78,13 +79,28 @@ async def _fetch_product(session, item: CatalogItem, sem: asyncio.Semaphore) -> 
                     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                 },
             )
+            http_meta = {
+                "_http_status": fetch_result.status_code or 0,
+                "_http_attempts": fetch_result.attempts,
+                "_retryable_hits": fetch_result.retryable_hits,
+            }
+            html = fetch_result.html
             if not html:
-                logger.warning("%s: карточка не загружена", tag)
-                return _base_product(
-                    item, status="fetch_failed", error="Не удалось загрузить карточку"
+                status = f"http_{fetch_result.status_code}" if fetch_result.status_code else "fetch_failed"
+                error = (
+                    f"HTTP {fetch_result.status_code} после {fetch_result.attempts} попыток"
+                    if fetch_result.status_code
+                    else "Не удалось загрузить карточку"
                 )
+                if fetch_result.error:
+                    error = f"{error}; {fetch_result.error}"
+                logger.warning("%s: карточка не загружена", tag)
+                product = _base_product(item, status=status, error=error)
+                product.update(http_meta)
+                return product
 
             product = _parse_product(html, item)
+            product.update(http_meta)
             if not product["name"] and not product["price"] and not product["characteristics"]:
                 product["status"] = "parse_empty"
                 product["error"] = "Карточка загружена, но ключевые поля не найдены"
@@ -94,6 +110,53 @@ async def _fetch_product(session, item: CatalogItem, sem: asyncio.Semaphore) -> 
             return _base_product(item, status="error", error=f"{type(exc).__name__}: {exc}")
 
 
+def _product_has_pressure(product: Product) -> bool:
+    status = product.get("status", "ok")
+    return (
+        product.get("_retryable_hits", 0) > 0
+        or status in {"http_403", "http_408", "http_429", "http_500", "http_502", "http_503", "http_504"}
+    )
+
+
+def _next_throttle_state(
+    batch_size: int,
+    sleep_sec: float,
+    stable_batches: int,
+    pressure_count: int,
+) -> tuple[int, float, int]:
+    if not CONFIG["product_adaptive_throttle"]:
+        return CONFIG["product_concurrency"], CONFIG["product_batch_sleep"], stable_batches
+
+    max_sleep = CONFIG["product_max_batch_sleep"]
+    base_sleep = CONFIG["product_batch_sleep"]
+
+    if pressure_count:
+        next_batch_size = max(1, batch_size // 2)
+        next_sleep = min(max_sleep, max(sleep_sec, base_sleep, 0.5) * 1.7)
+        if next_batch_size != batch_size or next_sleep > sleep_sec:
+            logger.warning(
+                "Антибот-сигналы в батче: %d. Замедляемся: batch=%d, sleep=%.1f сек",
+                pressure_count,
+                next_batch_size,
+                next_sleep,
+            )
+        return next_batch_size, next_sleep, 0
+
+    stable_batches += 1
+    if stable_batches < CONFIG["product_recovery_batches"]:
+        return batch_size, sleep_sec, stable_batches
+
+    next_batch_size = min(CONFIG["product_concurrency"], batch_size + 1)
+    next_sleep = max(base_sleep, sleep_sec * 0.75)
+    if next_batch_size != batch_size or next_sleep < sleep_sec:
+        logger.info(
+            "Стабильные батчи: ускоряемся: batch=%d, sleep=%.1f сек",
+            next_batch_size,
+            next_sleep,
+        )
+    return next_batch_size, next_sleep, 0
+
+
 async def fetch_and_parse_products(
     session,
     catalog_items: list[CatalogItem],
@@ -101,15 +164,17 @@ async def fetch_and_parse_products(
     sem = asyncio.Semaphore(CONFIG["product_concurrency"])
     products: list[Product] = []
     all_char_keys: set[str] = set()
-
-    # ИЗМЕНЕНО: убрали * 2 — батч = конкурентность, не больше
     batch_size = CONFIG["product_concurrency"]
+    batch_sleep = CONFIG["product_batch_sleep"]
+    stable_batches = 0
 
     from tqdm import tqdm
 
     with tqdm(total=len(catalog_items), desc="🔎 Карточки товаров", unit="шт") as pbar:
-        for start in range(0, len(catalog_items), batch_size):
+        start = 0
+        while start < len(catalog_items):
             batch = catalog_items[start : start + batch_size]
+            batch_started = time.monotonic()
 
             results = await asyncio.gather(
                 *[_fetch_product(session, item, sem) for item in batch], return_exceptions=True
@@ -142,9 +207,22 @@ async def fetch_and_parse_products(
                 pbar.set_postfix({"ошибок": failed_count})
 
             pbar.update(len(batch))
+            start += len(batch)
 
-            if start + batch_size < len(catalog_items) and CONFIG["product_batch_sleep"] > 0:
-                await asyncio.sleep(CONFIG["product_batch_sleep"])
+            pressure_count = sum(
+                1 for result in results if isinstance(result, dict) and _product_has_pressure(result)
+            )
+            batch_size, batch_sleep, stable_batches = _next_throttle_state(
+                batch_size=batch_size,
+                sleep_sec=batch_sleep,
+                stable_batches=stable_batches,
+                pressure_count=pressure_count,
+            )
+
+            elapsed = time.monotonic() - batch_started
+            if start < len(catalog_items) and batch_sleep > 0:
+                logger.debug("Пауза после батча: %.1f сек (батч %.1f сек)", batch_sleep, elapsed)
+                await asyncio.sleep(batch_sleep)
 
     char_keys_sorted = sorted(all_char_keys, key=lambda x: x.lower())
     failed_count = sum(1 for product in products if product.get("status") != "ok")

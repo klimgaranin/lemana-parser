@@ -1,15 +1,16 @@
 import json
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.request
 from argparse import ArgumentParser
 from contextlib import suppress
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-
-from lemana_parser.http_utils import CHROME_124_USER_AGENT
 
 TARGET_HOST = "lemanapro.ru"
 DEBUG_PORT = 9223
@@ -17,7 +18,7 @@ DEFAULT_URL = f"https://{TARGET_HOST}/catalogue/"
 WAIT_AFTER_OPEN_SEC = 5
 MAX_WAIT_COOKIE_SEC = 120
 POLL_INTERVAL_SEC = 3
-PROFILE_DIR = Path(".chrome_cdp_session")
+PROFILE_ROOT = Path(".chrome_cdp_session")
 
 CHROME_PATHS = [
     r"C:\Program Files\Google\Chrome\Application\chrome.exe",
@@ -28,6 +29,12 @@ CHROME_PATHS = [
 
 class CookieGrabberError(RuntimeError):
     """Ошибка автоматического получения cookie."""
+
+
+@dataclass
+class ChromeLaunch:
+    proc: subprocess.Popen | None
+    profile_dir: Path | None = None
 
 
 def find_chrome() -> str:
@@ -157,19 +164,19 @@ def _is_cdp_ready() -> bool:
     return True
 
 
-def _start_chrome(chrome: str, url: str) -> subprocess.Popen | None:
+def _start_chrome(chrome: str, url: str) -> ChromeLaunch:
     if _is_cdp_ready():
         print(f"ℹ️  Используем уже запущенный Chrome CDP на порту {DEBUG_PORT}")
-        return None
+        return ChromeLaunch(proc=None)
 
-    PROFILE_DIR.mkdir(exist_ok=True)
-    return subprocess.Popen(
+    PROFILE_ROOT.mkdir(exist_ok=True)
+    profile_dir = Path(tempfile.mkdtemp(prefix="run_", dir=PROFILE_ROOT)).resolve()
+    proc = subprocess.Popen(
         [
             chrome,
             f"--remote-debugging-port={DEBUG_PORT}",
-            f"--user-data-dir={PROFILE_DIR.resolve()}",
+            f"--user-data-dir={profile_dir}",
             "--remote-allow-origins=*",
-            f"--user-agent={CHROME_124_USER_AGENT}",
             "--lang=ru-RU",
             "--no-first-run",
             "--disable-default-apps",
@@ -177,6 +184,17 @@ def _start_chrome(chrome: str, url: str) -> subprocess.Popen | None:
             url,
         ]
     )
+    return ChromeLaunch(proc=proc, profile_dir=profile_dir)
+
+
+def _stop_chrome(launch: ChromeLaunch) -> None:
+    if launch.proc:
+        launch.proc.terminate()
+        with suppress(Exception):
+            launch.proc.wait(timeout=8)
+    if launch.profile_dir:
+        with suppress(Exception):
+            shutil.rmtree(launch.profile_dir)
 
 
 def _save_cookie_to_env(cookie_str: str, env_path: str = ".env") -> None:
@@ -220,7 +238,7 @@ def main(argv: list[str] | None = None) -> None:
     print(f"🌐 Открываем {TARGET_HOST} с debug-портом {DEBUG_PORT}...")
     print("   Если откроется проверка Qrator — пройди её в окне Chrome.")
 
-    proc = _start_chrome(chrome, url)
+    launch = _start_chrome(chrome, url)
     print(f"⏳ Ждём {WAIT_AFTER_OPEN_SEC} сек после открытия браузера...")
     time.sleep(WAIT_AFTER_OPEN_SEC)
 
@@ -236,8 +254,7 @@ def main(argv: list[str] | None = None) -> None:
         attempt += 1
         time.sleep(POLL_INTERVAL_SEC)
 
-    if proc:
-        proc.terminate()
+    _stop_chrome(launch)
 
     if not cookie_str:
         print("\n❌ Не удалось получить cookie автоматически.")

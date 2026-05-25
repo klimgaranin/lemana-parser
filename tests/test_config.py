@@ -21,6 +21,10 @@ def _valid_config(**overrides):
             "min_sleep_ms": 0,
             "max_sleep_ms": 100,
             "product_batch_sleep": 0,
+            "product_max_batch_sleep": 5,
+            "product_adaptive_throttle": True,
+            "product_recovery_batches": 3,
+            "browser_impersonate": "chrome",
         }
     )
     config.update(overrides)
@@ -46,6 +50,10 @@ class ConfigValidationTests(unittest.TestCase):
     def test_rejects_invalid_sleep_range(self):
         with self.assertRaisesRegex(ConfigError, "не должен быть больше"):
             validate_config(_valid_config(min_sleep_ms=200, max_sleep_ms=100))
+
+    def test_rejects_product_max_sleep_below_base_sleep(self):
+        with self.assertRaisesRegex(ConfigError, "PRODUCT_MAX_BATCH_SLEEP"):
+            validate_config(_valid_config(product_batch_sleep=2, product_max_batch_sleep=1))
 
 
 if __name__ == "__main__":

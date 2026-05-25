@@ -13,6 +13,7 @@ import asyncio
 import logging
 import random
 from collections.abc import Mapping
+from dataclasses import dataclass
 from urllib.parse import quote, urlparse, urlunparse
 
 from curl_cffi.requests import AsyncSession
@@ -23,11 +24,15 @@ logger = logging.getLogger("http_utils")
 
 MIN_HTML_CHARS = 200
 RETRYABLE_STATUS_CODES = {403, 408, 429, 500, 502, 503, 504}
-CHROME_124_USER_AGENT = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/124.0.0.0 Safari/537.36"
-)
+
+
+@dataclass(frozen=True)
+class FetchResult:
+    html: str | None
+    status_code: int | None
+    attempts: int
+    retryable_hits: int = 0
+    error: str = ""
 
 
 def describe_cookie(cookie: str) -> str:
@@ -41,14 +46,13 @@ def build_headers(
     extra_headers: Mapping[str, str] | None = None,
 ) -> dict[str, str]:
     """
-    Минимальные заголовки поверх impersonate='chrome124'.
+    Минимальные заголовки поверх curl_cffi impersonation.
 
     Важно:
     - НЕ добавляем Cache-Control / Pragma.
     - Cookie берём из аргумента или CONFIG, если она уже получена.
     """
     headers = {
-        "User-Agent": CHROME_124_USER_AGENT,
         "Accept": (
             "text/html,application/xhtml+xml,application/xml;"
             "q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8"
@@ -79,10 +83,10 @@ def _encode_url(url: str) -> str:
 
 def create_session() -> AsyncSession:
     """
-    AsyncSession с имперсонацией Chrome 124.
+    AsyncSession с браузерной имперсонацией curl_cffi.
     """
     return AsyncSession(
-        impersonate="chrome124",
+        impersonate=CONFIG["browser_impersonate"],
         verify=False,
         timeout=max(CONFIG["catalog_timeout"], CONFIG["product_timeout"]) + 10,
     )
@@ -100,19 +104,22 @@ def _response_meta(resp) -> str:
     return f"status={resp.status_code}, url={final_url}, content-type={content_type}"
 
 
-async def fetch_with_retry(
+async def fetch_with_retry_result(
     session: AsyncSession,
     url: str,
     timeout_sec: int,
     tag: str = "URL",
     extra_headers: Mapping[str, str] | None = None,
-) -> str | None:
+) -> FetchResult:
     """
     GET с retry.
-    Возвращает текст ответа или None.
+    Возвращает расширенный результат для адаптивного throttling.
     """
     safe_url = _encode_url(url)
     logger.debug("[%s] GET %s | cookie: %s", tag, safe_url, describe_cookie(CONFIG["cookie"]))
+    retryable_hits = 0
+    last_status: int | None = None
+    last_error = ""
 
     for attempt in range(1, CONFIG["max_retries"] + 1):
         try:
@@ -122,6 +129,7 @@ async def fetch_with_retry(
                 timeout=timeout_sec,
                 allow_redirects=True,
             )
+            last_status = resp.status_code
 
             if resp.status_code == 401:
                 logger.error(
@@ -130,9 +138,10 @@ async def fetch_with_retry(
                     tag,
                     describe_cookie(CONFIG["cookie"]),
                 )
-                return None
+                return FetchResult(None, resp.status_code, attempt, retryable_hits)
 
             if resp.status_code in RETRYABLE_STATUS_CODES:
+                retryable_hits += 1
                 wait = _retry_delay(attempt, resp.status_code)
                 logger.warning(
                     "[%s] attempt=%d %s — retry через %.1f сек",
@@ -148,7 +157,7 @@ async def fetch_with_retry(
             if resp.status_code < 400:
                 text = resp.text
                 if text and len(text) >= MIN_HTML_CHARS:
-                    return text
+                    return FetchResult(text, resp.status_code, attempt, retryable_hits)
 
                 logger.warning(
                     "[%s] attempt=%d status=%d short body (%d chars)",
@@ -161,8 +170,10 @@ async def fetch_with_retry(
                 logger.warning("[%s] attempt=%d %s", tag, attempt, _response_meta(resp))
 
         except TimeoutError:
+            last_error = "timeout"
             logger.warning("[%s] attempt=%d timeout", tag, attempt)
         except Exception as exc:
+            last_error = f"{type(exc).__name__}: {exc}"
             logger.warning("[%s] attempt=%d error: %s: %s", tag, attempt, type(exc).__name__, exc)
 
         if attempt < CONFIG["max_retries"]:
@@ -171,7 +182,21 @@ async def fetch_with_retry(
             await asyncio.sleep(wait)
 
     logger.error("[%s] retry exhausted: %s", tag, url)
-    return None
+    return FetchResult(None, last_status, CONFIG["max_retries"], retryable_hits, last_error)
+
+
+async def fetch_with_retry(
+    session: AsyncSession,
+    url: str,
+    timeout_sec: int,
+    tag: str = "URL",
+    extra_headers: Mapping[str, str] | None = None,
+) -> str | None:
+    """
+    Совместимая обёртка: возвращает только HTML или None.
+    """
+    result = await fetch_with_retry_result(session, url, timeout_sec, tag, extra_headers)
+    return result.html
 
 
 def compute_adaptive_sleep(batch_ms: float) -> float:

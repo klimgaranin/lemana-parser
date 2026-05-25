@@ -123,7 +123,7 @@ def _print_response_diagnostics(url: str, cookie: str) -> None:
     print(f"Cookie: {describe_cookie(cookie)}")
 
     try:
-        with CurlSession(impersonate="chrome124", verify=False) as session:
+        with CurlSession(impersonate=CONFIG["browser_impersonate"], verify=False) as session:
             resp = _request_html(session, url, cookie)
             html = resp.text or ""
             cards = re.findall(r'data-product-id=["\']([^"\']+)["\']', html)
