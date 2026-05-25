@@ -16,11 +16,13 @@ class CliTests(unittest.TestCase):
     def test_no_playwright_requires_cookie(self):
         CONFIG["cookie"] = ""
 
-        with patch("lemana_parser.cli.validate_config"), self.assertLogs("main", level="ERROR") as logs:
+        with (
+            patch("lemana_parser.cli.validate_config"),
+            patch("lemana_parser.cli._prepare_cookie_without_playwright", return_value=False),
+        ):
             exit_code = cli.main(["--no-playwright", "--no-pause"])
 
         self.assertEqual(exit_code, 2)
-        self.assertIn(r".\get_cookie.bat", "\n".join(logs.output))
 
     def test_check_cookie_returns_diagnostic_exit_code(self):
         with patch("lemana_parser.diagnostics.check_cookie.main", return_value=0) as check_main:
@@ -32,6 +34,7 @@ class CliTests(unittest.TestCase):
     def test_cli_overrides_are_applied(self):
         with (
             patch("lemana_parser.cli.validate_config"),
+            patch("lemana_parser.cli._prepare_cookie_without_playwright", return_value=True),
             patch("lemana_parser.cli._run_parsing", new=Mock(return_value="fake-coro")),
             patch("lemana_parser.cli.asyncio.run", return_value=None),
         ):

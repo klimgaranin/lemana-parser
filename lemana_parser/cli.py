@@ -29,7 +29,7 @@ logger = logging.getLogger("main")
 
 
 def _log_cookie_setup_help() -> None:
-    logger.error("Заполни LEMANA_COOKIE в .env или получи cookie автоматически:")
+    logger.error("Автообновление cookie не сработало. Можно запустить его отдельно:")
     logger.error(r"  PowerShell: .\get_cookie.bat")
     logger.error(r"  CMD:        get_cookie.bat")
     logger.error(r"После этого проверь cookie: .venv\Scripts\python.exe main.py --check-cookie --no-pause")
@@ -158,6 +158,49 @@ async def _run_parsing() -> None:
     return out_path, summary
 
 
+def _prepare_cookie_without_playwright() -> bool:
+    from lemana_parser.auth.cookie_grabber import CookieGrabberError, harvest_cookie_via_cdp
+    from lemana_parser.auth.cookie_health import check_cookie_sync
+
+    cookie = (CONFIG.get("cookie") or "").strip()
+    if cookie and CONFIG["cookie_preflight"]:
+        check = check_cookie_sync(CONFIG["catalog_first_page_url"], cookie)
+        if check.ok:
+            logger.info(
+                "🍪 Cookie проверена без Playwright: каталог=%s, карточка=%s",
+                check.catalog_status,
+                check.product_status,
+            )
+            return True
+        logger.warning("⚠️  Cookie из .env не прошла проверку: %s", check.reason)
+    elif cookie:
+        logger.info("🍪 Шаг 1/3: Используем cookie без запуска Playwright")
+        return True
+
+    if not CONFIG["cookie_auto_refresh"]:
+        logger.error("❌ Cookie нет или она не прошла проверку, автообновление отключено")
+        _log_cookie_setup_help()
+        return False
+
+    logger.info("🔁 Пробуем автоматически получить cookie через Chrome CDP без Playwright...")
+    try:
+        refreshed = harvest_cookie_via_cdp(CONFIG["catalog_first_page_url"], save=True)
+    except CookieGrabberError as exc:
+        logger.error("❌ CDP cookie refresh не сработал: %s", exc)
+        _log_cookie_setup_help()
+        return False
+
+    check = check_cookie_sync(CONFIG["catalog_first_page_url"], refreshed)
+    if not check.ok:
+        logger.error("❌ Новая cookie не прошла проверку: %s", check.reason)
+        _log_cookie_setup_help()
+        return False
+
+    CONFIG["cookie"] = refreshed
+    logger.info("✅ Cookie автоматически обновлена и проверена")
+    return True
+
+
 def main(argv=None) -> int:
     args = _parse_args(argv)
     _apply_cli_overrides(args)
@@ -184,15 +227,12 @@ def main(argv=None) -> int:
     print(f"   Вывод  : {CONFIG['output_dir']}/{CONFIG['output_filename']}")
     print("=" * 60)
 
-    # ── Шаг 1: Playwright СИНХРОННО (до event loop) ──────────────────────────
+    # ── Шаг 1: Cookie СИНХРОННО (до event loop) ──────────────────────────────
     if args.no_playwright:
-        if not CONFIG["cookie"]:
-            logger.error("❌ --no-playwright требует cookie в --cookie или LEMANA_COOKIE")
-            _log_cookie_setup_help()
+        if not _prepare_cookie_without_playwright():
             return 2
-        logger.info("🍪 Шаг 1/3: Используем cookie без запуска Playwright")
     else:
-        logger.info("🌐 Шаг 1/3: Получаем cookie через Playwright...")
+        logger.info("🌐 Шаг 1/3: Проверяем cookie и при необходимости обновляем...")
         try:
             CONFIG["cookie"] = harvest_cookies_sync(CONFIG["catalog_first_page_url"])
         except Exception as exc:

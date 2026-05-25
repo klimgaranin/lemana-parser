@@ -19,6 +19,9 @@ from contextlib import suppress
 
 from playwright.sync_api import sync_playwright
 
+from lemana_parser.auth.cookie_grabber import CookieGrabberError, harvest_cookie_via_cdp
+from lemana_parser.auth.cookie_health import check_cookie_sync
+
 logger = logging.getLogger("playwright_auth")
 
 PAGE_TIMEOUT_MS = 35_000
@@ -40,20 +43,42 @@ def harvest_cookies_sync(url: str) -> str:
         if not has_q:
             logger.warning(
                 "⚠️  В .env нет qrator_jsid2 — возможны HTTP 401. "
-                "Запусти cookie_grabber.py или смотри ИНСТРУКЦИЯ_COOKIE.txt"
+                "Пробуем автоматическое обновление."
             )
-        return existing
 
-    # ── 2. Playwright (только если .env пуст) ─────────────────────────────
-    logger.info("🌐 .env пуст → пробуем Playwright (headless=False)...")
+        if not CONFIG["cookie_preflight"]:
+            return existing
+
+        check = check_cookie_sync(url, existing)
+        if check.ok:
+            logger.info(
+                "✅ Cookie проверена: каталог=%s, карточка=%s, карточек на странице=%d",
+                check.catalog_status,
+                check.product_status,
+                check.catalog_cards,
+            )
+            return existing
+
+        logger.warning("⚠️  Cookie из .env не прошла проверку: %s", check.reason)
+        if not CONFIG["cookie_auto_refresh"]:
+            raise RuntimeError(f"Cookie из .env не прошла проверку: {check.reason}")
+
+    if CONFIG["cookie_auto_refresh"]:
+        refreshed = _harvest_cdp_then_validate(url)
+        if refreshed:
+            return refreshed
+
+    # ── 2. Playwright fallback ────────────────────────────────────────────
+    logger.info("🌐 Пробуем Playwright (headless=False)...")
     logger.info("   Откроется окно браузера, закроется само")
 
     try:
         cookie_str = _playwright_harvest(url)
-        if "qrator_jsid2" in cookie_str:
-            logger.info("✅ Playwright получил qrator_jsid2!")
+        check = check_cookie_sync(url, cookie_str)
+        if "qrator_jsid2" in cookie_str and check.ok:
+            logger.info("✅ Playwright получил и проверил qrator_jsid2!")
             return cookie_str
-        logger.warning("⚠️  Playwright не получил qrator_jsid2")
+        logger.warning("⚠️  Playwright cookie не прошла проверку: %s", check.reason)
     except Exception as e:
         logger.error("Playwright упал: %s", e)
 
@@ -62,6 +87,27 @@ def harvest_cookies_sync(url: str) -> str:
     raise RuntimeError(
         "Нет валидного cookie. Добавь LEMANA_COOKIE в .env (смотри ИНСТРУКЦИЯ_COOKIE.txt)"
     )
+
+
+def _harvest_cdp_then_validate(url: str) -> str:
+    logger.info("🔁 Пробуем автоматически обновить cookie через Chrome CDP...")
+    try:
+        cookie_str = harvest_cookie_via_cdp(url, save=True)
+    except CookieGrabberError as exc:
+        logger.warning("⚠️  CDP cookie refresh не сработал: %s", exc)
+        return ""
+
+    check = check_cookie_sync(url, cookie_str)
+    if check.ok:
+        logger.info(
+            "✅ CDP cookie обновлена и проверена: каталог=%s, карточка=%s",
+            check.catalog_status,
+            check.product_status,
+        )
+        return cookie_str
+
+    logger.warning("⚠️  CDP cookie получена, но не прошла проверку: %s", check.reason)
+    return ""
 
 
 def _playwright_harvest(url: str) -> str:
@@ -95,15 +141,11 @@ def _playwright_harvest(url: str) -> str:
 def _print_manual_help() -> None:
     print()
     print("=" * 55)
-    print("  ⚠️  Нужна ручная вставка cookie")
+    print("  ⚠️  Автоматическое обновление cookie не удалось")
     print("=" * 55)
-    print("  1. Открой Chrome → lemanapro.ru/catalogue/")
-    print("  2. F12 → Network → F5 → кликни первый запрос")
-    print("  3. Request Headers → строка 'cookie:' → Copy value")
-    print("  4. Открой .env в папке проекта")
-    print('  5. LEMANA_COOKIE="<вставь сюда>"')
-    print(r"  6. Сохрани → запусти .\run_win.bat --no-playwright")
+    print(r"  1. Запусти .\get_cookie.bat и дождись сохранения cookie")
+    print(r"  2. Проверь: .venv\Scripts\python.exe main.py --check-cookie --no-pause")
+    print(r"  3. Запусти .\run_win.bat --no-playwright")
     print()
-    print(r"  Или запусти из PowerShell: .\get_cookie.bat")
-    print(r"  В CMD можно без префикса: get_cookie.bat")
+    print("  Если Qrator показал проверку в Chrome, пройди её в открытом окне.")
     print("=" * 55)

@@ -99,6 +99,9 @@ CONFIG: Config = {
     "product_pressure_cooldown": _env_float("LEMANA_PRODUCT_PRESSURE_COOLDOWN", 20.0),
     # ── HTTP fingerprint ────────────────────────────────────────────────────
     "browser_impersonate": _env_str("LEMANA_BROWSER_IMPERSONATE", "chrome"),
+    # ── Cookie recovery ─────────────────────────────────────────────────────
+    "cookie_preflight": _env_bool("LEMANA_COOKIE_PREFLIGHT", True),
+    "cookie_auto_refresh": _env_bool("LEMANA_COOKIE_AUTO_REFRESH", True),
     # ── Cookie (Playwright заполняет автоматически) ──────────────────────────
     "cookie": os.getenv("LEMANA_COOKIE", "").strip().strip("\"'"),
 }

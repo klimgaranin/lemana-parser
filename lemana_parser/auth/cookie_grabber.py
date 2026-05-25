@@ -1,9 +1,6 @@
 import json
 import os
-import shutil
 import subprocess
-import sys
-import tempfile
 import time
 import urllib.request
 from argparse import ArgumentParser
@@ -18,7 +15,7 @@ DEFAULT_URL = f"https://{TARGET_HOST}/catalogue/"
 WAIT_AFTER_OPEN_SEC = 5
 MAX_WAIT_COOKIE_SEC = 120
 POLL_INTERVAL_SEC = 3
-PROFILE_ROOT = Path(".chrome_cdp_session")
+PROFILE_DIR = Path(".chrome_cdp_profile")
 
 CHROME_PATHS = [
     r"C:\Program Files\Google\Chrome\Application\chrome.exe",
@@ -34,7 +31,6 @@ class CookieGrabberError(RuntimeError):
 @dataclass
 class ChromeLaunch:
     proc: subprocess.Popen | None
-    profile_dir: Path | None = None
 
 
 def find_chrome() -> str:
@@ -169,13 +165,12 @@ def _start_chrome(chrome: str, url: str) -> ChromeLaunch:
         print(f"ℹ️  Используем уже запущенный Chrome CDP на порту {DEBUG_PORT}")
         return ChromeLaunch(proc=None)
 
-    PROFILE_ROOT.mkdir(exist_ok=True)
-    profile_dir = Path(tempfile.mkdtemp(prefix="run_", dir=PROFILE_ROOT)).resolve()
+    PROFILE_DIR.mkdir(exist_ok=True)
     proc = subprocess.Popen(
         [
             chrome,
             f"--remote-debugging-port={DEBUG_PORT}",
-            f"--user-data-dir={profile_dir}",
+            f"--user-data-dir={PROFILE_DIR.resolve()}",
             "--remote-allow-origins=*",
             "--lang=ru-RU",
             "--no-first-run",
@@ -184,7 +179,7 @@ def _start_chrome(chrome: str, url: str) -> ChromeLaunch:
             url,
         ]
     )
-    return ChromeLaunch(proc=proc, profile_dir=profile_dir)
+    return ChromeLaunch(proc=proc)
 
 
 def _stop_chrome(launch: ChromeLaunch) -> None:
@@ -192,9 +187,6 @@ def _stop_chrome(launch: ChromeLaunch) -> None:
         launch.proc.terminate()
         with suppress(Exception):
             launch.proc.wait(timeout=8)
-    if launch.profile_dir:
-        with suppress(Exception):
-            shutil.rmtree(launch.profile_dir)
 
 
 def _save_cookie_to_env(cookie_str: str, env_path: str = ".env") -> None:
@@ -209,6 +201,44 @@ def _save_cookie_to_env(cookie_str: str, env_path: str = ".env") -> None:
 
     env_lines.append(f'LEMANA_COOKIE="{cookie_str}"\n')
     path.write_text("".join(env_lines), encoding="utf-8")
+
+
+def harvest_cookie_via_cdp(url: str, *, save: bool = True) -> str:
+    """Автоматически получает cookie через Chrome CDP и при необходимости сохраняет в .env."""
+    chrome = find_chrome()
+    if not chrome:
+        raise CookieGrabberError("Chrome не найден")
+
+    print(f"✅ Chrome найден: {chrome}")
+    print(f"🌐 Открываем {TARGET_HOST} с debug-портом {DEBUG_PORT}...")
+    print("   Если откроется проверка Qrator — пройди её в окне Chrome.")
+
+    launch = _start_chrome(chrome, url)
+    try:
+        print(f"⏳ Ждём {WAIT_AFTER_OPEN_SEC} сек после открытия браузера...")
+        time.sleep(WAIT_AFTER_OPEN_SEC)
+
+        cookie_str = ""
+        deadline = time.monotonic() + MAX_WAIT_COOKIE_SEC
+        attempt = 1
+        while time.monotonic() < deadline:
+            cookie_str = get_cookies_via_cdp(url)
+            if "qrator_jsid2" in cookie_str:
+                break
+            left = max(0, int(deadline - time.monotonic()))
+            print(f"  попытка {attempt}: qrator_jsid2 ещё не получен, ждём... осталось ~{left} сек")
+            attempt += 1
+            time.sleep(POLL_INTERVAL_SEC)
+    finally:
+        _stop_chrome(launch)
+
+    if not cookie_str:
+        raise CookieGrabberError("не удалось получить cookie автоматически")
+
+    if save:
+        _save_cookie_to_env(cookie_str)
+
+    return cookie_str
 
 
 def _parse_args(argv: list[str] | None = None):
@@ -229,44 +259,17 @@ def main(argv: list[str] | None = None) -> None:
     print("  Cookie Grabber для lemanapro.ru")
     print("=" * 55)
 
-    chrome = find_chrome()
-    if not chrome:
-        print("❌ Chrome не найден. Укажи путь вручную в CHROME_PATHS")
-        sys.exit(1)
-
-    print(f"✅ Chrome найден: {chrome}")
-    print(f"🌐 Открываем {TARGET_HOST} с debug-портом {DEBUG_PORT}...")
-    print("   Если откроется проверка Qrator — пройди её в окне Chrome.")
-
-    launch = _start_chrome(chrome, url)
-    print(f"⏳ Ждём {WAIT_AFTER_OPEN_SEC} сек после открытия браузера...")
-    time.sleep(WAIT_AFTER_OPEN_SEC)
-
-    cookie_str = ""
-    deadline = time.monotonic() + MAX_WAIT_COOKIE_SEC
-    attempt = 1
-    while time.monotonic() < deadline:
-        cookie_str = get_cookies_via_cdp(url)
-        if "qrator_jsid2" in cookie_str:
-            break
-        left = max(0, int(deadline - time.monotonic()))
-        print(f"  попытка {attempt}: qrator_jsid2 ещё не получен, ждём... осталось ~{left} сек")
-        attempt += 1
-        time.sleep(POLL_INTERVAL_SEC)
-
-    _stop_chrome(launch)
-
-    if not cookie_str:
+    try:
+        cookie_str = harvest_cookie_via_cdp(url)
+    except CookieGrabberError as exc:
         print("\n❌ Не удалось получить cookie автоматически.")
-        print("   Сделай вручную (см. ИНСТРУКЦИЯ_COOKIE.txt)")
+        print(f"   Причина: {exc}")
         return
 
     has_qrator = "qrator_jsid2" in cookie_str
     print("\n✅ Cookie получен!")
     print(f"   Символов: {len(cookie_str)}")
     print(f"   qrator_jsid2: {'✓' if has_qrator else '✗ ОТСУТСТВУЕТ'}")
-
-    _save_cookie_to_env(cookie_str)
 
     print("\n✅ Сохранено в .env")
     print("   Теперь запускай: run_win.bat")
