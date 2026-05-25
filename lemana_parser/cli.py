@@ -15,13 +15,28 @@ import time
 from lemana_parser.auth.playwright_auth import harvest_cookies_sync
 from lemana_parser.config import CONFIG, ConfigError, apply_overrides, validate_config
 
+
+class TqdmLoggingHandler(logging.StreamHandler):
+    """Пишет логи так, чтобы они не прилипали к progress bar."""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            from tqdm import tqdm
+
+            message = self.format(record)
+            tqdm.write(message, file=self.stream)
+            self.flush()
+        except Exception:
+            super().emit(record)
+
+
 # ── Логирование настраиваем до всего остального ──────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     datefmt="%H:%M:%S",
     handlers=[
-        logging.StreamHandler(sys.stdout),
+        TqdmLoggingHandler(sys.stdout),
         logging.FileHandler("parser.log", encoding="utf-8"),
     ],
 )

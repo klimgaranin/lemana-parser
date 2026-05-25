@@ -190,6 +190,10 @@ async def fetch_and_parse_products(
     batch_size = min(CONFIG["product_concurrency"], CONFIG["product_max_active_batch"])
     batch_sleep = _initial_product_sleep()
     stable_batches = 0
+    primary_deferred_count = 0
+    deferred_recovered_count = 0
+    deferred_final_error_count = 0
+    deferred_rounds_used = 0
 
     from tqdm import tqdm
 
@@ -224,6 +228,7 @@ async def fetch_and_parse_products(
                 if is_deferred_candidate(product):
                     deferred_items.append(item)
                     deferred_in_batch += 1
+                    primary_deferred_count += 1
                     logger.warning(
                         "PROD_%s: откладываем повтор после антибот-ответа %s",
                         item.get("article", item["url"][-20:]),
@@ -266,6 +271,7 @@ async def fetch_and_parse_products(
             max_rounds = CONFIG["product_deferred_rounds"]
 
             for round_number in range(1, max_rounds + 1):
+                deferred_rounds_used = round_number
                 cooldown = _pressure_cooldown()
                 if cooldown > 0:
                     logger.warning(
@@ -289,6 +295,10 @@ async def fetch_and_parse_products(
                             max_rounds,
                         )
                     else:
+                        if product.get("status") == "ok":
+                            deferred_recovered_count += 1
+                        else:
+                            deferred_final_error_count += 1
                         add_final_product(product)
                         failed_count = sum(1 for product in products if product.get("status") != "ok")
                         if failed_count:
@@ -305,6 +315,14 @@ async def fetch_and_parse_products(
 
     char_keys_sorted = sorted(all_char_keys, key=lambda x: x.lower())
     failed_count = sum(1 for product in products if product.get("status") != "ok")
+    if primary_deferred_count:
+        logger.info(
+            "Отложенные карточки: первично=%d, восстановлено=%d, финальных ошибок=%d, раундов=%d",
+            primary_deferred_count,
+            deferred_recovered_count,
+            deferred_final_error_count,
+            deferred_rounds_used,
+        )
     if failed_count:
         logger.warning(
             "Карточки товаров: %d из %d с ошибками/пустым парсингом", failed_count, len(products)
