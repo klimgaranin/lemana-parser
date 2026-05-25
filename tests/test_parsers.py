@@ -12,6 +12,7 @@ from lemana_parser.parsers.html import (
 )
 from lemana_parser.products import (
     _fetch_product,
+    _initial_product_sleep,
     _next_throttle_state,
     _parse_product,
     fetch_and_parse_products,
@@ -138,6 +139,9 @@ class ProductFetchTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("HTTP 403", product["error"])
 
     def test_adaptive_throttle_slows_down_on_pressure(self):
+        CONFIG["product_batch_sleep"] = 0.5
+        CONFIG["product_min_recovery_sleep"] = 2
+        CONFIG["product_max_batch_sleep"] = 10
         batch_size, sleep_sec, stable = _next_throttle_state(
             batch_size=4,
             sleep_sec=0.5,
@@ -145,14 +149,43 @@ class ProductFetchTests(unittest.IsolatedAsyncioTestCase):
             pressure_count=1,
         )
 
-        self.assertEqual(batch_size, 2)
-        self.assertGreater(sleep_sec, 0.5)
+        self.assertEqual(batch_size, 1)
+        self.assertGreaterEqual(sleep_sec, 2)
         self.assertEqual(stable, 0)
+
+    def test_adaptive_throttle_does_not_exceed_safe_batch_limit(self):
+        CONFIG["product_concurrency"] = 4
+        CONFIG["product_max_active_batch"] = 2
+        CONFIG["product_batch_sleep"] = 0.5
+        CONFIG["product_min_recovery_sleep"] = 2
+        CONFIG["product_recovery_batches"] = 2
+
+        batch_size, sleep_sec, stable = _next_throttle_state(
+            batch_size=2,
+            sleep_sec=1,
+            stable_batches=5,
+            pressure_count=0,
+        )
+
+        self.assertEqual(batch_size, 2)
+        self.assertGreaterEqual(sleep_sec, 2)
+        self.assertEqual(stable, 0)
+
+    def test_initial_product_sleep_respects_safe_minimum(self):
+        CONFIG["product_adaptive_throttle"] = True
+        CONFIG["product_batch_sleep"] = 0.5
+        CONFIG["product_min_recovery_sleep"] = 2
+
+        self.assertEqual(_initial_product_sleep(), 2)
 
     async def test_fetch_and_parse_products_defers_antibot_failure_once(self):
         CONFIG["product_concurrency"] = 1
+        CONFIG["product_max_active_batch"] = 1
         CONFIG["product_batch_sleep"] = 0
+        CONFIG["product_min_recovery_sleep"] = 0
         CONFIG["product_pressure_cooldown"] = 0
+        CONFIG["product_deferred_sleep"] = 0
+        CONFIG["product_deferred_rounds"] = 2
         CONFIG["product_deferred_retry"] = True
         CONFIG["product_adaptive_throttle"] = True
 
@@ -169,6 +202,41 @@ class ProductFetchTests(unittest.IsolatedAsyncioTestCase):
             "lemana_parser.products.fetch_with_retry_result",
             new=AsyncMock(
                 side_effect=[
+                    FetchResult(None, 403, 1, retryable_hits=1),
+                    FetchResult(html, 200, 1, retryable_hits=0),
+                ]
+            ),
+        ):
+            products, _ = await fetch_and_parse_products(object(), [item])
+
+        self.assertEqual(len(products), 1)
+        self.assertEqual(products[0]["status"], "ok")
+
+    async def test_fetch_and_parse_products_retries_deferred_for_multiple_rounds(self):
+        CONFIG["product_concurrency"] = 1
+        CONFIG["product_max_active_batch"] = 1
+        CONFIG["product_batch_sleep"] = 0
+        CONFIG["product_min_recovery_sleep"] = 0
+        CONFIG["product_pressure_cooldown"] = 0
+        CONFIG["product_deferred_sleep"] = 0
+        CONFIG["product_deferred_rounds"] = 3
+        CONFIG["product_deferred_retry"] = True
+        CONFIG["product_adaptive_throttle"] = True
+
+        item = {
+            "article": "123456",
+            "url": "https://lemanapro.ru/product/test-123456/",
+            "name": "Название",
+            "price": "100,00",
+            "image": "",
+        }
+        html = "<html><body><h1>Название</h1>" + ("x" * 250) + "</body></html>"
+
+        with patch(
+            "lemana_parser.products.fetch_with_retry_result",
+            new=AsyncMock(
+                side_effect=[
+                    FetchResult(None, 403, 1, retryable_hits=1),
                     FetchResult(None, 403, 1, retryable_hits=1),
                     FetchResult(html, 200, 1, retryable_hits=0),
                 ]

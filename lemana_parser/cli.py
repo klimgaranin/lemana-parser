@@ -61,6 +61,31 @@ def _parse_args(argv=None) -> argparse.Namespace:
         help="Максимальная адаптивная пауза между батчами карточек, сек",
     )
     parser.add_argument(
+        "--product-max-active-batch",
+        type=int,
+        help="Максимальный размер активного батча карточек в адаптивном режиме",
+    )
+    parser.add_argument(
+        "--product-min-recovery-sleep",
+        type=float,
+        help="Минимальная пауза карточек после восстановления от 403/429, сек",
+    )
+    parser.add_argument(
+        "--product-pressure-cooldown",
+        type=float,
+        help="Пауза после антибот-сигналов карточек, сек",
+    )
+    parser.add_argument(
+        "--product-deferred-rounds",
+        type=int,
+        help="Количество медленных раундов повторов для отложенных карточек",
+    )
+    parser.add_argument(
+        "--product-deferred-sleep",
+        type=float,
+        help="Пауза между отложенными повторами карточек, сек",
+    )
+    parser.add_argument(
         "--browser-impersonate",
         help="Профиль curl_cffi impersonate, например chrome, chrome124, safari",
     )
@@ -91,6 +116,11 @@ def _apply_cli_overrides(args: argparse.Namespace) -> None:
         product_concurrency=args.product_concurrency,
         product_batch_sleep=args.product_batch_sleep,
         product_max_batch_sleep=args.product_max_batch_sleep,
+        product_max_active_batch=args.product_max_active_batch,
+        product_min_recovery_sleep=args.product_min_recovery_sleep,
+        product_pressure_cooldown=args.product_pressure_cooldown,
+        product_deferred_rounds=args.product_deferred_rounds,
+        product_deferred_sleep=args.product_deferred_sleep,
         browser_impersonate=args.browser_impersonate,
         cookie=args.cookie.strip().strip("\"'") if args.cookie else None,
     )

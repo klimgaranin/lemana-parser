@@ -24,7 +24,11 @@ def _valid_config(**overrides):
             "product_max_batch_sleep": 5,
             "product_adaptive_throttle": True,
             "product_recovery_batches": 3,
+            "product_max_active_batch": 1,
+            "product_min_recovery_sleep": 0,
             "product_deferred_retry": True,
+            "product_deferred_rounds": 3,
+            "product_deferred_sleep": 0,
             "product_pressure_cooldown": 12,
             "browser_impersonate": "chrome",
         }
@@ -60,6 +64,10 @@ class ConfigValidationTests(unittest.TestCase):
     def test_rejects_negative_product_pressure_cooldown(self):
         with self.assertRaisesRegex(ConfigError, "PRESSURE_COOLDOWN"):
             validate_config(_valid_config(product_pressure_cooldown=-1))
+
+    def test_rejects_invalid_deferred_rounds(self):
+        with self.assertRaisesRegex(ConfigError, "DEFERRED_ROUNDS"):
+            validate_config(_valid_config(product_deferred_rounds=0))
 
 
 if __name__ == "__main__":

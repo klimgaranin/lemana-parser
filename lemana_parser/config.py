@@ -77,7 +77,7 @@ CONFIG: Config = {
     "max_pages_safety": _env_int("LEMANA_MAX_PAGES_SAFETY", 8000),
     # ── Параллелизм ──────────────────────────────────────────────────────────
     "catalog_concurrency": _env_int("LEMANA_CATALOG_CONCURRENCY", 8),
-    "product_concurrency": _env_int("LEMANA_PRODUCT_CONCURRENCY", 4),
+    "product_concurrency": _env_int("LEMANA_PRODUCT_CONCURRENCY", 2),
     # ── Таймауты (секунды) ───────────────────────────────────────────────────
     "catalog_timeout": _env_int("LEMANA_CATALOG_TIMEOUT", 25),
     "product_timeout": _env_int("LEMANA_PRODUCT_TIMEOUT", 30),
@@ -87,12 +87,16 @@ CONFIG: Config = {
     # ── Адаптивная пауза между батчами (мс) ─────────────────────────────────
     "min_sleep_ms": _env_int("LEMANA_MIN_SLEEP_MS", 1500),
     "max_sleep_ms": _env_int("LEMANA_MAX_SLEEP_MS", 3500),
-    "product_batch_sleep": _env_float("LEMANA_PRODUCT_BATCH_SLEEP", 0.5),
-    "product_max_batch_sleep": _env_float("LEMANA_PRODUCT_MAX_BATCH_SLEEP", 8.0),
+    "product_batch_sleep": _env_float("LEMANA_PRODUCT_BATCH_SLEEP", 2.0),
+    "product_max_batch_sleep": _env_float("LEMANA_PRODUCT_MAX_BATCH_SLEEP", 10.0),
     "product_adaptive_throttle": _env_bool("LEMANA_PRODUCT_ADAPTIVE_THROTTLE", True),
-    "product_recovery_batches": _env_int("LEMANA_PRODUCT_RECOVERY_BATCHES", 3),
+    "product_recovery_batches": _env_int("LEMANA_PRODUCT_RECOVERY_BATCHES", 6),
+    "product_max_active_batch": _env_int("LEMANA_PRODUCT_MAX_ACTIVE_BATCH", 2),
+    "product_min_recovery_sleep": _env_float("LEMANA_PRODUCT_MIN_RECOVERY_SLEEP", 2.0),
     "product_deferred_retry": _env_bool("LEMANA_PRODUCT_DEFERRED_RETRY", True),
-    "product_pressure_cooldown": _env_float("LEMANA_PRODUCT_PRESSURE_COOLDOWN", 12.0),
+    "product_deferred_rounds": _env_int("LEMANA_PRODUCT_DEFERRED_ROUNDS", 3),
+    "product_deferred_sleep": _env_float("LEMANA_PRODUCT_DEFERRED_SLEEP", 6.0),
+    "product_pressure_cooldown": _env_float("LEMANA_PRODUCT_PRESSURE_COOLDOWN", 20.0),
     # ── HTTP fingerprint ────────────────────────────────────────────────────
     "browser_impersonate": _env_str("LEMANA_BROWSER_IMPERSONATE", "chrome"),
     # ── Cookie (Playwright заполняет автоматически) ──────────────────────────
@@ -149,6 +153,18 @@ def validate_config(config: Config = CONFIG) -> None:
 
     if config["product_recovery_batches"] < 1:
         raise ConfigError("LEMANA_PRODUCT_RECOVERY_BATCHES должен быть >= 1")
+
+    if config["product_max_active_batch"] < 1:
+        raise ConfigError("LEMANA_PRODUCT_MAX_ACTIVE_BATCH должен быть >= 1")
+
+    if config["product_min_recovery_sleep"] < 0:
+        raise ConfigError("LEMANA_PRODUCT_MIN_RECOVERY_SLEEP должен быть >= 0")
+
+    if config["product_deferred_rounds"] < 1:
+        raise ConfigError("LEMANA_PRODUCT_DEFERRED_ROUNDS должен быть >= 1")
+
+    if config["product_deferred_sleep"] < 0:
+        raise ConfigError("LEMANA_PRODUCT_DEFERRED_SLEEP должен быть >= 0")
 
     if config["product_pressure_cooldown"] < 0:
         raise ConfigError("LEMANA_PRODUCT_PRESSURE_COOLDOWN должен быть >= 0")

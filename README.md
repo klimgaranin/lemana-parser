@@ -64,9 +64,13 @@ run_win.bat --url "https://lemanapro.ru/catalogue/..." --max-products 100 --prod
 - `--url` — URL первой страницы каталога.
 - `--output-dir` и `--output-filename` — куда сохранить Excel.
 - `--max-products` — ограничение количества товаров.
-- `--catalog-concurrency` и `--product-concurrency` — параллельность запросов.
+- `--catalog-concurrency` и `--product-concurrency` — верхняя параллельность запросов.
 - `--product-batch-sleep` — пауза между батчами карточек.
 - `--product-max-batch-sleep` — верхняя граница адаптивной паузы при `403/429`.
+- `--product-max-active-batch` — реальный потолок размера батча карточек.
+- `--product-min-recovery-sleep` — минимальная пауза после восстановления от `403/429`.
+- `--product-pressure-cooldown` — длинная пауза после антибот-сигнала.
+- `--product-deferred-rounds` и `--product-deferred-sleep` — медленные повторы отложенных карточек.
 - `--browser-impersonate` — профиль `curl_cffi`, по умолчанию `chrome`.
 - `--cookie` — cookie прямо из командной строки.
 - `--no-playwright` — не открывать браузер, использовать cookie из `.env` или `--cookie`.
@@ -90,23 +94,28 @@ PowerShell запускает `.bat` из текущей папки только
 
 ## Скорость и антибот-ограничения
 
-По умолчанию карточки товаров стартуют в 4 параллельных потока с малой паузой. Если сервер начинает отвечать `403/429`, парсер сам уменьшает размер батча и увеличивает паузу. После стабильных батчей он постепенно ускоряется обратно:
+По умолчанию карточки товаров работают в стабильном режиме: активный батч не поднимается выше 2, а пауза после восстановления не опускается ниже 2 секунд. Если сервер отвечает `403/429`, парсер сбрасывается до `batch=1`, делает cooldown и только после нескольких стабильных батчей осторожно возвращается к `batch=2`:
 
 ```env
-LEMANA_PRODUCT_CONCURRENCY=4
-LEMANA_PRODUCT_BATCH_SLEEP=0.5
-LEMANA_PRODUCT_MAX_BATCH_SLEEP=8.0
+LEMANA_PRODUCT_CONCURRENCY=2
+LEMANA_PRODUCT_BATCH_SLEEP=2.0
+LEMANA_PRODUCT_MAX_BATCH_SLEEP=10.0
 LEMANA_PRODUCT_ADAPTIVE_THROTTLE=true
+LEMANA_PRODUCT_RECOVERY_BATCHES=6
+LEMANA_PRODUCT_MAX_ACTIVE_BATCH=2
+LEMANA_PRODUCT_MIN_RECOVERY_SLEEP=2.0
 LEMANA_PRODUCT_DEFERRED_RETRY=true
-LEMANA_PRODUCT_PRESSURE_COOLDOWN=12.0
+LEMANA_PRODUCT_DEFERRED_ROUNDS=3
+LEMANA_PRODUCT_DEFERRED_SLEEP=6.0
+LEMANA_PRODUCT_PRESSURE_COOLDOWN=20.0
 ```
 
-При `403/429` на карточке парсер не делает серию немедленных повторов по тому же URL. Карточка откладывается, парсер делает паузу и пробует её позже в одиночном режиме. Это медленнее на проблемных товарах, зато меньше портит текущую сессию cookie.
+При `403/429` на карточке парсер не делает серию немедленных повторов по тому же URL. Карточка откладывается, затем проходит до 3 медленных одиночных раундов. Это медленнее, зато снижает количество пустых строк в Excel.
 
-Если даже адаптивный режим часто ловит `403`, запусти консервативно:
+Если даже стабильный режим часто ловит `403`, запусти максимально бережно:
 
 ```bat
-run_win.bat --no-playwright --product-concurrency 2 --product-batch-sleep 2 --product-max-batch-sleep 12
+run_win.bat --no-playwright --product-concurrency 1 --product-max-active-batch 1 --product-batch-sleep 4 --product-deferred-sleep 10 --product-pressure-cooldown 30
 ```
 
 ## Тесты

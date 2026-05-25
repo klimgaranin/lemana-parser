@@ -119,6 +119,24 @@ def _product_has_pressure(product: Product) -> bool:
     )
 
 
+def _initial_product_sleep() -> float:
+    if not CONFIG["product_adaptive_throttle"]:
+        return CONFIG["product_batch_sleep"]
+    return max(CONFIG["product_batch_sleep"], CONFIG["product_min_recovery_sleep"])
+
+
+def _recovery_batches_threshold() -> int:
+    if not CONFIG["product_adaptive_throttle"]:
+        return CONFIG["product_recovery_batches"]
+    return max(CONFIG["product_recovery_batches"], 6)
+
+
+def _pressure_cooldown() -> float:
+    if not CONFIG["product_adaptive_throttle"]:
+        return CONFIG["product_pressure_cooldown"]
+    return max(CONFIG["product_pressure_cooldown"], CONFIG["product_min_recovery_sleep"] * 10)
+
+
 def _next_throttle_state(
     batch_size: int,
     sleep_sec: float,
@@ -126,14 +144,17 @@ def _next_throttle_state(
     pressure_count: int,
 ) -> tuple[int, float, int]:
     if not CONFIG["product_adaptive_throttle"]:
-        return CONFIG["product_concurrency"], CONFIG["product_batch_sleep"], stable_batches
+        batch_limit = min(CONFIG["product_concurrency"], CONFIG["product_max_active_batch"])
+        return batch_limit, CONFIG["product_batch_sleep"], stable_batches
 
     max_sleep = CONFIG["product_max_batch_sleep"]
     base_sleep = CONFIG["product_batch_sleep"]
+    min_recovery_sleep = CONFIG["product_min_recovery_sleep"]
+    batch_limit = min(CONFIG["product_concurrency"], CONFIG["product_max_active_batch"])
 
     if pressure_count:
-        next_batch_size = max(1, batch_size // 2)
-        next_sleep = min(max_sleep, max(sleep_sec, base_sleep, 0.5) * 1.7)
+        next_batch_size = 1
+        next_sleep = min(max_sleep, max(sleep_sec * 1.8, base_sleep, min_recovery_sleep))
         if next_batch_size != batch_size or next_sleep > sleep_sec:
             logger.warning(
                 "Антибот-сигналы в батче: %d. Замедляемся: batch=%d, sleep=%.1f сек",
@@ -144,11 +165,11 @@ def _next_throttle_state(
         return next_batch_size, next_sleep, 0
 
     stable_batches += 1
-    if stable_batches < CONFIG["product_recovery_batches"]:
+    if stable_batches < _recovery_batches_threshold():
         return batch_size, sleep_sec, stable_batches
 
-    next_batch_size = min(CONFIG["product_concurrency"], batch_size + 1)
-    next_sleep = max(base_sleep, sleep_sec * 0.75)
+    next_batch_size = min(batch_limit, batch_size + 1)
+    next_sleep = max(base_sleep, min_recovery_sleep, sleep_sec * 0.9)
     if next_batch_size != batch_size or next_sleep < sleep_sec:
         logger.info(
             "Стабильные батчи: ускоряемся: batch=%d, sleep=%.1f сек",
@@ -166,8 +187,8 @@ async def fetch_and_parse_products(
     products: list[Product] = []
     deferred_items: list[CatalogItem] = []
     all_char_keys: set[str] = set()
-    batch_size = CONFIG["product_concurrency"]
-    batch_sleep = CONFIG["product_batch_sleep"]
+    batch_size = min(CONFIG["product_concurrency"], CONFIG["product_max_active_batch"])
+    batch_sleep = _initial_product_sleep()
     stable_batches = 0
 
     from tqdm import tqdm
@@ -234,31 +255,53 @@ async def fetch_and_parse_products(
                 logger.debug("Пауза после батча: %.1f сек (батч %.1f сек)", batch_sleep, elapsed)
                 await asyncio.sleep(batch_sleep)
 
-            if pressure_count and CONFIG["product_pressure_cooldown"] > 0:
-                cooldown = CONFIG["product_pressure_cooldown"]
+            if pressure_count and _pressure_cooldown() > 0:
+                cooldown = _pressure_cooldown()
                 logger.warning("Пауза после антибот-сигналов: %.1f сек", cooldown)
                 await asyncio.sleep(cooldown)
 
         if deferred_items:
-            cooldown = CONFIG["product_pressure_cooldown"]
-            if cooldown > 0:
-                logger.warning(
-                    "Отложенный повтор карточек: %d шт, пауза %.1f сек",
-                    len(deferred_items),
-                    cooldown,
-                )
-                await asyncio.sleep(cooldown)
-
             retry_sem = asyncio.Semaphore(1)
-            for item in deferred_items:
-                product = await _fetch_product(session, item, retry_sem)
-                add_final_product(product)
-                failed_count = sum(1 for product in products if product.get("status") != "ok")
-                if failed_count:
-                    pbar.set_postfix({"ошибок": failed_count})
-                pbar.update(1)
-                if CONFIG["product_batch_sleep"] > 0:
-                    await asyncio.sleep(max(CONFIG["product_batch_sleep"], 1.0))
+            pending_deferred = deferred_items
+            max_rounds = CONFIG["product_deferred_rounds"]
+
+            for round_number in range(1, max_rounds + 1):
+                cooldown = _pressure_cooldown()
+                if cooldown > 0:
+                    logger.warning(
+                        "Отложенный повтор карточек: раунд %d/%d, товаров=%d, пауза %.1f сек",
+                        round_number,
+                        max_rounds,
+                        len(pending_deferred),
+                        cooldown,
+                    )
+                    await asyncio.sleep(cooldown)
+
+                next_deferred: list[CatalogItem] = []
+                for item in pending_deferred:
+                    product = await _fetch_product(session, item, retry_sem)
+                    if is_deferred_candidate(product) and round_number < max_rounds:
+                        next_deferred.append(item)
+                        logger.warning(
+                            "PROD_%s: оставляем на следующий медленный раунд (%d/%d)",
+                            item.get("article", item["url"][-20:]),
+                            round_number + 1,
+                            max_rounds,
+                        )
+                    else:
+                        add_final_product(product)
+                        failed_count = sum(1 for product in products if product.get("status") != "ok")
+                        if failed_count:
+                            pbar.set_postfix({"ошибок": failed_count})
+                        pbar.update(1)
+
+                    retry_sleep = CONFIG["product_deferred_sleep"]
+                    if retry_sleep > 0:
+                        await asyncio.sleep(retry_sleep)
+
+                if not next_deferred:
+                    break
+                pending_deferred = next_deferred
 
     char_keys_sorted = sorted(all_char_keys, key=lambda x: x.lower())
     failed_count = sum(1 for product in products if product.get("status") != "ok")
