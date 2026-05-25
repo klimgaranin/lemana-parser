@@ -78,6 +78,7 @@ async def _fetch_product(session, item: CatalogItem, sem: asyncio.Semaphore) -> 
                     "Referer": CONFIG["catalog_first_page_url"],
                     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                 },
+                stop_on_status_codes={403, 429},
             )
             http_meta = {
                 "_http_status": fetch_result.status_code or 0,
@@ -163,12 +164,21 @@ async def fetch_and_parse_products(
 ) -> tuple[list[Product], list[str]]:
     sem = asyncio.Semaphore(CONFIG["product_concurrency"])
     products: list[Product] = []
+    deferred_items: list[CatalogItem] = []
     all_char_keys: set[str] = set()
     batch_size = CONFIG["product_concurrency"]
     batch_sleep = CONFIG["product_batch_sleep"]
     stable_batches = 0
 
     from tqdm import tqdm
+
+    def add_final_product(product: Product) -> None:
+        for key in product["characteristics"]:
+            all_char_keys.add(key)
+        products.append(product)
+
+    def is_deferred_candidate(product: Product) -> bool:
+        return CONFIG["product_deferred_retry"] and product.get("status") in {"http_403", "http_429"}
 
     with tqdm(total=len(catalog_items), desc="🔎 Карточки товаров", unit="шт") as pbar:
         start = 0
@@ -180,33 +190,33 @@ async def fetch_and_parse_products(
                 *[_fetch_product(session, item, sem) for item in batch], return_exceptions=True
             )
 
-            for result in results:
+            deferred_in_batch = 0
+            for item, result in zip(batch, results, strict=False):
                 if isinstance(result, Exception):
                     logger.exception("Необработанная ошибка батча карточек", exc_info=result)
-                    products.append(
-                        {
-                            "status": "error",
-                            "error": f"{type(result).__name__}: {result}",
-                            "article": "",
-                            "url": "",
-                            "name": "",
-                            "price": "",
-                            "image": "",
-                            "characteristics": {},
-                        }
+                    add_final_product(
+                        _base_product(item, status="error", error=f"{type(result).__name__}: {result}")
                     )
                     continue
 
                 product = result
-                for key in product["characteristics"]:
-                    all_char_keys.add(key)
-                products.append(product)
+                if is_deferred_candidate(product):
+                    deferred_items.append(item)
+                    deferred_in_batch += 1
+                    logger.warning(
+                        "PROD_%s: откладываем повтор после антибот-ответа %s",
+                        item.get("article", item["url"][-20:]),
+                        product.get("status"),
+                    )
+                    continue
+
+                add_final_product(product)
 
             failed_count = sum(1 for product in products if product.get("status") != "ok")
             if failed_count:
                 pbar.set_postfix({"ошибок": failed_count})
 
-            pbar.update(len(batch))
+            pbar.update(len(batch) - deferred_in_batch)
             start += len(batch)
 
             pressure_count = sum(
@@ -223,6 +233,32 @@ async def fetch_and_parse_products(
             if start < len(catalog_items) and batch_sleep > 0:
                 logger.debug("Пауза после батча: %.1f сек (батч %.1f сек)", batch_sleep, elapsed)
                 await asyncio.sleep(batch_sleep)
+
+            if pressure_count and CONFIG["product_pressure_cooldown"] > 0:
+                cooldown = CONFIG["product_pressure_cooldown"]
+                logger.warning("Пауза после антибот-сигналов: %.1f сек", cooldown)
+                await asyncio.sleep(cooldown)
+
+        if deferred_items:
+            cooldown = CONFIG["product_pressure_cooldown"]
+            if cooldown > 0:
+                logger.warning(
+                    "Отложенный повтор карточек: %d шт, пауза %.1f сек",
+                    len(deferred_items),
+                    cooldown,
+                )
+                await asyncio.sleep(cooldown)
+
+            retry_sem = asyncio.Semaphore(1)
+            for item in deferred_items:
+                product = await _fetch_product(session, item, retry_sem)
+                add_final_product(product)
+                failed_count = sum(1 for product in products if product.get("status") != "ok")
+                if failed_count:
+                    pbar.set_postfix({"ошибок": failed_count})
+                pbar.update(1)
+                if CONFIG["product_batch_sleep"] > 0:
+                    await asyncio.sleep(max(CONFIG["product_batch_sleep"], 1.0))
 
     char_keys_sorted = sorted(all_char_keys, key=lambda x: x.lower())
     failed_count = sum(1 for product in products if product.get("status") != "ok")

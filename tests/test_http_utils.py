@@ -3,7 +3,12 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 from lemana_parser.config import CONFIG
-from lemana_parser.http_utils import build_headers, fetch_with_retry, fetch_with_retry_result
+from lemana_parser.http_utils import (
+    build_headers,
+    fetch_with_retry,
+    fetch_with_retry_result,
+    parse_cookie_header,
+)
 
 
 class FakeResponse:
@@ -35,6 +40,19 @@ class HttpUtilsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(headers["Referer"], "https://lemanapro.ru/catalogue/")
         self.assertIn("Accept-Language", headers)
         self.assertEqual(headers["Sec-Fetch-Dest"], "document")
+
+    def test_build_headers_does_not_force_config_cookie_by_default(self):
+        CONFIG["cookie"] = "a=b"
+
+        headers = build_headers()
+
+        self.assertNotIn("Cookie", headers)
+
+    def test_parse_cookie_header_skips_invalid_parts(self):
+        self.assertEqual(
+            parse_cookie_header("qrator_jsid2=abc; bad-part; region=moscow"),
+            {"qrator_jsid2": "abc", "region": "moscow"},
+        )
 
     async def test_fetch_with_retry_returns_text_on_success(self):
         session = SimpleNamespace(get=AsyncMock(return_value=FakeResponse(200, "x" * 250)))
@@ -83,6 +101,25 @@ class HttpUtilsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.status_code, 200)
         self.assertEqual(result.attempts, 2)
         self.assertEqual(result.retryable_hits, 1)
+
+    async def test_fetch_with_retry_result_can_stop_on_antibot_status(self):
+        session = SimpleNamespace(get=AsyncMock(return_value=FakeResponse(403, "blocked")))
+        CONFIG["max_retries"] = 3
+
+        with patch("lemana_parser.http_utils.asyncio.sleep", new=AsyncMock()) as sleep_mock:
+            result = await fetch_with_retry_result(
+                session,
+                "https://lemanapro.ru/product/test/",
+                5,
+                stop_on_status_codes={403},
+            )
+
+        self.assertIsNone(result.html)
+        self.assertEqual(result.status_code, 403)
+        self.assertEqual(result.attempts, 1)
+        self.assertEqual(result.retryable_hits, 1)
+        session.get.assert_awaited_once()
+        sleep_mock.assert_not_awaited()
 
 
 if __name__ == "__main__":

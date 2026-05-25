@@ -95,7 +95,11 @@ LEMANA_PRODUCT_CONCURRENCY=4
 LEMANA_PRODUCT_BATCH_SLEEP=0.5
 LEMANA_PRODUCT_MAX_BATCH_SLEEP=8.0
 LEMANA_PRODUCT_ADAPTIVE_THROTTLE=true
+LEMANA_PRODUCT_DEFERRED_RETRY=true
+LEMANA_PRODUCT_PRESSURE_COOLDOWN=12.0
 ```
+
+При `403/429` на карточке парсер не делает серию немедленных повторов по тому же URL. Карточка откладывается, парсер делает паузу и пробует её позже в одиночном режиме. Это медленнее на проблемных товарах, зато меньше портит текущую сессию cookie.
 
 Если даже адаптивный режим часто ловит `403`, запусти консервативно:
 

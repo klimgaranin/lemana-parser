@@ -24,6 +24,8 @@ def _valid_config(**overrides):
             "product_max_batch_sleep": 5,
             "product_adaptive_throttle": True,
             "product_recovery_batches": 3,
+            "product_deferred_retry": True,
+            "product_pressure_cooldown": 12,
             "browser_impersonate": "chrome",
         }
     )
@@ -54,6 +56,10 @@ class ConfigValidationTests(unittest.TestCase):
     def test_rejects_product_max_sleep_below_base_sleep(self):
         with self.assertRaisesRegex(ConfigError, "PRODUCT_MAX_BATCH_SLEEP"):
             validate_config(_valid_config(product_batch_sleep=2, product_max_batch_sleep=1))
+
+    def test_rejects_negative_product_pressure_cooldown(self):
+        with self.assertRaisesRegex(ConfigError, "PRESSURE_COOLDOWN"):
+            validate_config(_valid_config(product_pressure_cooldown=-1))
 
 
 if __name__ == "__main__":

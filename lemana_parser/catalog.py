@@ -410,6 +410,10 @@ async def collect_catalog_items(session) -> list[CatalogItem]:
         total_pages,
     )
 
+    if len(items_map) >= CONFIG["max_products"]:
+        logger.info("Достигнут max_products=%d на первой странице каталога", CONFIG["max_products"])
+        return list(items_map.values())[: CONFIG["max_products"]]
+
     # ── pages 2..N ──────────────────────────────────────────────────────────
     sem = asyncio.Semaphore(CONFIG["catalog_concurrency"])
 

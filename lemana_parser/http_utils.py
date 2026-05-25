@@ -1,13 +1,4 @@
-"""
-http_utils.py — Асинхронные HTTP-запросы через curl_cffi.
-
-Почему переписан:
-- Убраны Cache-Control: no-cache и Pragma: no-cache.
-  Для обычной браузерной навигации это лишние и подозрительные заголовки.
-- Добавлен нормальный Accept.
-- Оставлен ранний выход при 401.
-- Оставлен backoff при 403/429.
-"""
+"""Асинхронные HTTP-запросы через curl_cffi."""
 
 import asyncio
 import logging
@@ -41,16 +32,26 @@ def describe_cookie(cookie: str) -> str:
     return f"{len(cookie)} симв, qrator_jsid2={'да' if 'qrator_jsid2' in cookie else 'нет'}"
 
 
+def parse_cookie_header(cookie: str) -> dict[str, str]:
+    """Преобразует строку Cookie из .env в словарь для cookie jar сессии."""
+    result: dict[str, str] = {}
+    for part in cookie.split(";"):
+        key, separator, value = part.strip().partition("=")
+        if separator and key:
+            result[key] = value
+    return result
+
+
 def build_headers(
-    cookie: str | None = None,
+    cookie: str = "",
     extra_headers: Mapping[str, str] | None = None,
 ) -> dict[str, str]:
     """
     Минимальные заголовки поверх curl_cffi impersonation.
 
-    Важно:
-    - НЕ добавляем Cache-Control / Pragma.
-    - Cookie берём из аргумента или CONFIG, если она уже получена.
+    Cookie добавляем только если он передан явно.
+    Обычные запросы используют cookie jar внутри session, чтобы серверные
+    Set-Cookie обновления не затирались старой строкой из .env.
     """
     headers = {
         "Accept": (
@@ -64,9 +65,8 @@ def build_headers(
         "Sec-Fetch-Site": "same-origin",
         "Sec-Fetch-User": "?1",
     }
-    cookie_value = CONFIG["cookie"] if cookie is None else cookie
-    if cookie_value:
-        headers["Cookie"] = cookie_value
+    if cookie:
+        headers["Cookie"] = cookie
     if extra_headers:
         headers.update(extra_headers)
     return headers
@@ -89,6 +89,7 @@ def create_session() -> AsyncSession:
         impersonate=CONFIG["browser_impersonate"],
         verify=False,
         timeout=max(CONFIG["catalog_timeout"], CONFIG["product_timeout"]) + 10,
+        cookies=parse_cookie_header(CONFIG["cookie"]),
     )
 
 
@@ -110,6 +111,7 @@ async def fetch_with_retry_result(
     timeout_sec: int,
     tag: str = "URL",
     extra_headers: Mapping[str, str] | None = None,
+    stop_on_status_codes: set[int] | None = None,
 ) -> FetchResult:
     """
     GET с retry.
@@ -120,6 +122,7 @@ async def fetch_with_retry_result(
     retryable_hits = 0
     last_status: int | None = None
     last_error = ""
+    stop_on_status_codes = stop_on_status_codes or set()
 
     for attempt in range(1, CONFIG["max_retries"] + 1):
         try:
@@ -142,6 +145,15 @@ async def fetch_with_retry_result(
 
             if resp.status_code in RETRYABLE_STATUS_CODES:
                 retryable_hits += 1
+                if resp.status_code in stop_on_status_codes:
+                    logger.warning(
+                        "[%s] attempt=%d %s — без немедленного retry",
+                        tag,
+                        attempt,
+                        _response_meta(resp),
+                    )
+                    return FetchResult(None, resp.status_code, attempt, retryable_hits)
+
                 wait = _retry_delay(attempt, resp.status_code)
                 logger.warning(
                     "[%s] attempt=%d %s — retry через %.1f сек",

@@ -91,6 +91,8 @@ CONFIG: Config = {
     "product_max_batch_sleep": _env_float("LEMANA_PRODUCT_MAX_BATCH_SLEEP", 8.0),
     "product_adaptive_throttle": _env_bool("LEMANA_PRODUCT_ADAPTIVE_THROTTLE", True),
     "product_recovery_batches": _env_int("LEMANA_PRODUCT_RECOVERY_BATCHES", 3),
+    "product_deferred_retry": _env_bool("LEMANA_PRODUCT_DEFERRED_RETRY", True),
+    "product_pressure_cooldown": _env_float("LEMANA_PRODUCT_PRESSURE_COOLDOWN", 12.0),
     # ── HTTP fingerprint ────────────────────────────────────────────────────
     "browser_impersonate": _env_str("LEMANA_BROWSER_IMPERSONATE", "chrome"),
     # ── Cookie (Playwright заполняет автоматически) ──────────────────────────
@@ -147,6 +149,9 @@ def validate_config(config: Config = CONFIG) -> None:
 
     if config["product_recovery_batches"] < 1:
         raise ConfigError("LEMANA_PRODUCT_RECOVERY_BATCHES должен быть >= 1")
+
+    if config["product_pressure_cooldown"] < 0:
+        raise ConfigError("LEMANA_PRODUCT_PRESSURE_COOLDOWN должен быть >= 0")
 
     if config["min_sleep_ms"] < 0 or config["max_sleep_ms"] < 0:
         raise ConfigError("LEMANA_MIN_SLEEP_MS и LEMANA_MAX_SLEEP_MS должны быть >= 0")
