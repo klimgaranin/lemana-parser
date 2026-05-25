@@ -28,6 +28,13 @@ logging.basicConfig(
 logger = logging.getLogger("main")
 
 
+def _log_cookie_setup_help() -> None:
+    logger.error("Заполни LEMANA_COOKIE в .env или получи cookie автоматически:")
+    logger.error(r"  PowerShell: .\get_cookie.bat")
+    logger.error(r"  CMD:        get_cookie.bat")
+    logger.error(r"После этого проверь cookie: .venv\Scripts\python.exe main.py --check-cookie --no-pause")
+
+
 def _parse_args(argv=None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="HTML-парсер каталога lemanapro.ru в Excel.",
@@ -151,6 +158,7 @@ def main(argv=None) -> int:
     if args.no_playwright:
         if not CONFIG["cookie"]:
             logger.error("❌ --no-playwright требует cookie в --cookie или LEMANA_COOKIE")
+            _log_cookie_setup_help()
             return 2
         logger.info("🍪 Шаг 1/3: Используем cookie без запуска Playwright")
     else:
@@ -160,6 +168,7 @@ def main(argv=None) -> int:
         except Exception as exc:
             logger.error("❌ Playwright упал: %s", exc)
             logger.error("Убедись что установлен браузер: python -m playwright install chromium")
+            _log_cookie_setup_help()
             return 1
 
     # ── Шаг 2+3: curl_cffi с WindowsSelectorEventLoopPolicy ─────────────────

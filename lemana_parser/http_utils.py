@@ -137,7 +137,7 @@ async def fetch_with_retry_result(
             if resp.status_code == 401:
                 logger.error(
                     "[%s] HTTP 401 — cookie отклонена сервером (%s). "
-                    "Обнови LEMANA_COOKIE через get_cookie.bat или вручную.",
+                    r"Обнови LEMANA_COOKIE через .\get_cookie.bat в PowerShell или вручную.",
                     tag,
                     describe_cookie(CONFIG["cookie"]),
                 )

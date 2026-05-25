@@ -143,7 +143,7 @@ def _print_response_diagnostics(url: str, cookie: str) -> None:
 
     if resp.status_code == 401:
         print("\n⚠️  401: cookie отклонена сервером.")
-        print("   Обнови LEMANA_COOKIE через get_cookie.bat или инструкцию.")
+        print(r"   Обнови LEMANA_COOKIE через .\get_cookie.bat в PowerShell или вручную.")
     elif resp.status_code in {403, 429}:
         print("\n⚠️  403/429: сервер ограничивает запросы или считает сессию подозрительной.")
         print("   Уменьши concurrency, увеличь паузы или обнови cookie.")

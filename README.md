@@ -76,8 +76,10 @@ run_win.bat --url "https://lemanapro.ru/catalogue/..." --max-products 100 --prod
 
 ## Диагностика cookie
 
-```bat
-get_cookie.bat
+PowerShell запускает `.bat` из текущей папки только с префиксом `.\`:
+
+```powershell
+.\get_cookie.bat
 .venv\Scripts\python.exe check_cookie.py
 .venv\Scripts\python.exe main.py --check-cookie --no-pause
 ```
