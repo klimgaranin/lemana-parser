@@ -132,9 +132,7 @@ def _recovery_batches_threshold() -> int:
 
 
 def _pressure_cooldown() -> float:
-    if not CONFIG["product_adaptive_throttle"]:
-        return CONFIG["product_pressure_cooldown"]
-    return max(CONFIG["product_pressure_cooldown"], CONFIG["product_min_recovery_sleep"] * 10)
+    return CONFIG["product_pressure_cooldown"]
 
 
 def _next_throttle_state(
@@ -205,8 +203,23 @@ async def fetch_and_parse_products(
     def is_deferred_candidate(product: Product) -> bool:
         return CONFIG["product_deferred_retry"] and product.get("status") in {"http_403", "http_429"}
 
+    def update_progress_postfix(pressure_count: int = 0) -> None:
+        postfix = {
+            "время": time.strftime("%H:%M:%S"),
+            "batch": batch_size,
+            "sleep": f"{batch_sleep:.1f}s",
+            "отлож": primary_deferred_count,
+        }
+        failed_count = sum(1 for product in products if product.get("status") != "ok")
+        if pressure_count:
+            postfix["403"] = pressure_count
+        if failed_count:
+            postfix["ошибок"] = failed_count
+        pbar.set_postfix(postfix)
+
     with tqdm(total=len(catalog_items), desc="🔎 Карточки товаров", unit="шт") as pbar:
         start = 0
+        update_progress_postfix()
         while start < len(catalog_items):
             batch = catalog_items[start : start + batch_size]
             batch_started = time.monotonic()
@@ -238,10 +251,6 @@ async def fetch_and_parse_products(
 
                 add_final_product(product)
 
-            failed_count = sum(1 for product in products if product.get("status") != "ok")
-            if failed_count:
-                pbar.set_postfix({"ошибок": failed_count})
-
             pbar.update(len(batch) - deferred_in_batch)
             start += len(batch)
 
@@ -254,6 +263,7 @@ async def fetch_and_parse_products(
                 stable_batches=stable_batches,
                 pressure_count=pressure_count,
             )
+            update_progress_postfix(pressure_count)
 
             elapsed = time.monotonic() - batch_started
             if start < len(catalog_items) and batch_sleep > 0:
@@ -300,10 +310,8 @@ async def fetch_and_parse_products(
                         else:
                             deferred_final_error_count += 1
                         add_final_product(product)
-                        failed_count = sum(1 for product in products if product.get("status") != "ok")
-                        if failed_count:
-                            pbar.set_postfix({"ошибок": failed_count})
                         pbar.update(1)
+                        update_progress_postfix()
 
                     retry_sleep = CONFIG["product_deferred_sleep"]
                     if retry_sleep > 0:

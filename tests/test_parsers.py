@@ -15,6 +15,7 @@ from lemana_parser.products import (
     _initial_product_sleep,
     _next_throttle_state,
     _parse_product,
+    _pressure_cooldown,
     fetch_and_parse_products,
     summarize_products,
 )
@@ -177,6 +178,12 @@ class ProductFetchTests(unittest.IsolatedAsyncioTestCase):
         CONFIG["product_min_recovery_sleep"] = 2
 
         self.assertEqual(_initial_product_sleep(), 2)
+
+    def test_pressure_cooldown_is_direct_config_value(self):
+        CONFIG["product_pressure_cooldown"] = 15
+        CONFIG["product_min_recovery_sleep"] = 4
+
+        self.assertEqual(_pressure_cooldown(), 15)
 
     async def test_fetch_and_parse_products_defers_antibot_failure_once(self):
         CONFIG["product_concurrency"] = 1
