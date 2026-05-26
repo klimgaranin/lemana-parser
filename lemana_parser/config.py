@@ -87,16 +87,16 @@ CONFIG: Config = {
     # ── Адаптивная пауза между батчами (мс) ─────────────────────────────────
     "min_sleep_ms": _env_int("LEMANA_MIN_SLEEP_MS", 1500),
     "max_sleep_ms": _env_int("LEMANA_MAX_SLEEP_MS", 3500),
-    "product_batch_sleep": _env_float("LEMANA_PRODUCT_BATCH_SLEEP", 2.0),
+    "product_batch_sleep": _env_float("LEMANA_PRODUCT_BATCH_SLEEP", 4.0),
     "product_max_batch_sleep": _env_float("LEMANA_PRODUCT_MAX_BATCH_SLEEP", 10.0),
     "product_adaptive_throttle": _env_bool("LEMANA_PRODUCT_ADAPTIVE_THROTTLE", True),
     "product_recovery_batches": _env_int("LEMANA_PRODUCT_RECOVERY_BATCHES", 6),
     "product_max_active_batch": _env_int("LEMANA_PRODUCT_MAX_ACTIVE_BATCH", 2),
-    "product_min_recovery_sleep": _env_float("LEMANA_PRODUCT_MIN_RECOVERY_SLEEP", 2.0),
+    "product_min_recovery_sleep": _env_float("LEMANA_PRODUCT_MIN_RECOVERY_SLEEP", 4.0),
     "product_deferred_retry": _env_bool("LEMANA_PRODUCT_DEFERRED_RETRY", True),
     "product_deferred_rounds": _env_int("LEMANA_PRODUCT_DEFERRED_ROUNDS", 3),
     "product_deferred_sleep": _env_float("LEMANA_PRODUCT_DEFERRED_SLEEP", 6.0),
-    "product_pressure_cooldown": _env_float("LEMANA_PRODUCT_PRESSURE_COOLDOWN", 20.0),
+    "product_pressure_cooldown": _env_float("LEMANA_PRODUCT_PRESSURE_COOLDOWN", 15.0),
     # ── HTTP fingerprint ────────────────────────────────────────────────────
     "browser_impersonate": _env_str("LEMANA_BROWSER_IMPERSONATE", "chrome"),
     # ── Cookie recovery ─────────────────────────────────────────────────────

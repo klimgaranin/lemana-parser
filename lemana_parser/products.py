@@ -192,6 +192,7 @@ async def fetch_and_parse_products(
     deferred_recovered_count = 0
     deferred_final_error_count = 0
     deferred_rounds_used = 0
+    pressure_signal_count = 0
 
     from tqdm import tqdm
 
@@ -257,6 +258,7 @@ async def fetch_and_parse_products(
             pressure_count = sum(
                 1 for result in results if isinstance(result, dict) and _product_has_pressure(result)
             )
+            pressure_signal_count += pressure_count
             batch_size, batch_sleep, stable_batches = _next_throttle_state(
                 batch_size=batch_size,
                 sleep_sec=batch_sleep,
@@ -331,6 +333,13 @@ async def fetch_and_parse_products(
             deferred_final_error_count,
             deferred_rounds_used,
         )
+    logger.info(
+        "Антибот-режим: сигналов=%d, batch<=%d, стартовая пауза=%.1f сек, cooldown=%.1f сек",
+        pressure_signal_count,
+        CONFIG["product_max_active_batch"],
+        _initial_product_sleep(),
+        _pressure_cooldown(),
+    )
     if failed_count:
         logger.warning(
             "Карточки товаров: %d из %d с ошибками/пустым парсингом", failed_count, len(products)

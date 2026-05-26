@@ -64,6 +64,7 @@ run_win.bat --url "https://lemanapro.ru/catalogue/..." --max-products 100 --prod
 - `--url` — URL первой страницы каталога.
 - `--output-dir` и `--output-filename` — куда сохранить Excel.
 - `--max-products` — ограничение количества товаров.
+- `--profile stable|careful|fast` — готовый профиль загрузки карточек.
 - `--catalog-concurrency` и `--product-concurrency` — верхняя параллельность запросов.
 - `--product-batch-sleep` — пауза между батчами карточек.
 - `--product-max-batch-sleep` — верхняя граница адаптивной паузы при `403/429`.
@@ -101,20 +102,20 @@ LEMANA_COOKIE_AUTO_REFRESH=true
 
 ## Скорость и антибот-ограничения
 
-По умолчанию карточки товаров работают в стабильном режиме: активный батч не поднимается выше 2, а пауза после восстановления не опускается ниже 2 секунд. Если сервер отвечает `403/429`, парсер сбрасывается до `batch=1`, делает cooldown и только после нескольких стабильных батчей осторожно возвращается к `batch=2`:
+По умолчанию карточки товаров работают в стабильном режиме, подтверждённом боевыми прогонами на каталогах 381 и 264 товара: активный батч не поднимается выше 2, а пауза после восстановления не опускается ниже 4 секунд. Если сервер отвечает `403/429`, парсер сбрасывается до `batch=1`, делает cooldown и только после нескольких стабильных батчей осторожно возвращается к `batch=2`:
 
 ```env
 LEMANA_PRODUCT_CONCURRENCY=2
-LEMANA_PRODUCT_BATCH_SLEEP=2.0
+LEMANA_PRODUCT_BATCH_SLEEP=4.0
 LEMANA_PRODUCT_MAX_BATCH_SLEEP=10.0
 LEMANA_PRODUCT_ADAPTIVE_THROTTLE=true
 LEMANA_PRODUCT_RECOVERY_BATCHES=6
 LEMANA_PRODUCT_MAX_ACTIVE_BATCH=2
-LEMANA_PRODUCT_MIN_RECOVERY_SLEEP=2.0
+LEMANA_PRODUCT_MIN_RECOVERY_SLEEP=4.0
 LEMANA_PRODUCT_DEFERRED_RETRY=true
 LEMANA_PRODUCT_DEFERRED_ROUNDS=3
 LEMANA_PRODUCT_DEFERRED_SLEEP=6.0
-LEMANA_PRODUCT_PRESSURE_COOLDOWN=20.0
+LEMANA_PRODUCT_PRESSURE_COOLDOWN=15.0
 ```
 
 При `403/429` на карточке парсер не делает серию немедленных повторов по тому же URL. Карточка откладывается, затем проходит до 3 медленных одиночных раундов. Это медленнее, зато снижает количество пустых строк в Excel.
@@ -122,13 +123,25 @@ LEMANA_PRODUCT_PRESSURE_COOLDOWN=20.0
 `LEMANA_PRODUCT_PRESSURE_COOLDOWN` задаёт паузу напрямую. Она не умножается на `LEMANA_PRODUCT_MIN_RECOVERY_SLEEP`, поэтому можно отдельно держать карточки медленными, а cooldown оставить 15-20 секунд:
 
 ```bat
-run_win.bat --product-batch-sleep 3.5 --product-min-recovery-sleep 3.5 --product-pressure-cooldown 20
+run_win.bat --product-batch-sleep 4 --product-min-recovery-sleep 4 --product-pressure-cooldown 15
 ```
+
+Готовые профили:
+
+```bat
+run_win.bat --profile stable
+run_win.bat --profile careful
+run_win.bat --profile fast --max-products 30
+```
+
+- `stable` — основной боевой режим: `batch<=2`, пауза 4 сек, cooldown 15 сек.
+- `careful` — максимально бережный режим: одиночные карточки, пауза 5 сек, cooldown 20 сек.
+- `fast` — только для коротких тестов: быстрее, но риск `403` выше.
 
 Если даже стабильный режим часто ловит `403`, запусти максимально бережно:
 
 ```bat
-run_win.bat --no-playwright --product-concurrency 1 --product-max-active-batch 1 --product-batch-sleep 4 --product-deferred-sleep 10 --product-pressure-cooldown 30
+run_win.bat --profile careful
 ```
 
 ## Тесты

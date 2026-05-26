@@ -117,5 +117,6 @@ def write_xlsx(products: list[Product], char_keys: list[str]) -> str:
         ws.column_dimensions[get_column_letter(col_i)].width = COL_WIDTHS.get(h, 20)
 
     wb.save(out_path)
+    wb.close()
     logger.info("✅ Excel сохранён: %s (%d строк)", out_path, len(products))
     return out_path

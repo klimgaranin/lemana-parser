@@ -11,9 +11,48 @@ import asyncio
 import logging
 import sys
 import time
+import warnings
 
 from lemana_parser.auth.playwright_auth import harvest_cookies_sync
 from lemana_parser.config import CONFIG, ConfigError, apply_overrides, validate_config
+from lemana_parser.models import ProductSummary
+
+PRODUCT_PROFILES = {
+    "stable": {
+        "product_concurrency": 2,
+        "product_batch_sleep": 4.0,
+        "product_min_recovery_sleep": 4.0,
+        "product_pressure_cooldown": 15.0,
+        "product_max_active_batch": 2,
+        "product_deferred_sleep": 6.0,
+        "product_deferred_rounds": 3,
+    },
+    "careful": {
+        "product_concurrency": 1,
+        "product_batch_sleep": 5.0,
+        "product_min_recovery_sleep": 5.0,
+        "product_pressure_cooldown": 20.0,
+        "product_max_active_batch": 1,
+        "product_deferred_sleep": 8.0,
+        "product_deferred_rounds": 3,
+    },
+    "fast": {
+        "product_concurrency": 2,
+        "product_batch_sleep": 2.5,
+        "product_min_recovery_sleep": 2.5,
+        "product_pressure_cooldown": 15.0,
+        "product_max_active_batch": 2,
+        "product_deferred_sleep": 5.0,
+        "product_deferred_rounds": 2,
+    },
+}
+
+
+warnings.filterwarnings(
+    "ignore",
+    message=r"Curlm alread closed!.*",
+    category=UserWarning,
+)
 
 
 class TqdmLoggingHandler(logging.StreamHandler):
@@ -58,6 +97,11 @@ def _parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--output-dir", help="Папка для Excel-файлов")
     parser.add_argument("--output-filename", help="Имя Excel-файла, должно оканчиваться на .xlsx")
     parser.add_argument("--max-products", type=int, help="Максимум товаров для выгрузки")
+    parser.add_argument(
+        "--profile",
+        choices=sorted(PRODUCT_PROFILES),
+        help="Профиль загрузки карточек: stable, careful или fast",
+    )
     parser.add_argument(
         "--max-pages-safety", type=int, help="Предохранитель по максимуму страниц каталога"
     )
@@ -121,6 +165,9 @@ def _parse_args(argv=None) -> argparse.Namespace:
 
 
 def _apply_cli_overrides(args: argparse.Namespace) -> None:
+    if args.profile:
+        apply_overrides(**PRODUCT_PROFILES[args.profile])
+
     apply_overrides(
         catalog_first_page_url=args.url,
         output_dir=args.output_dir,
@@ -141,7 +188,7 @@ def _apply_cli_overrides(args: argparse.Namespace) -> None:
     )
 
 
-async def _run_parsing() -> None:
+async def _run_parsing() -> tuple[str, ProductSummary] | None:
     """Асинхронная часть: curl_cffi каталог + карточки + xlsx."""
     from lemana_parser.catalog import collect_catalog_items
     from lemana_parser.excel_writer import write_xlsx
@@ -159,6 +206,8 @@ async def _run_parsing() -> None:
 
         logger.info("🔎 Шаг 3/3: Загрузка карточек товаров...")
         products, all_char_keys = await fetch_and_parse_products(session, catalog_items)
+
+    await asyncio.sleep(0)
 
     logger.info("📝 Запись в Excel...")
     out_path = write_xlsx(products, all_char_keys)
@@ -240,6 +289,14 @@ def main(argv=None) -> int:
     print("🚀  LemanapPRO Parser")
     print(f"   URL    : {CONFIG['catalog_first_page_url']}")
     print(f"   Вывод  : {CONFIG['output_dir']}/{CONFIG['output_filename']}")
+    if args.profile:
+        print(f"   Профиль: {args.profile}")
+    print(
+        "   Карточки: "
+        f"batch<={CONFIG['product_max_active_batch']}, "
+        f"sleep>={CONFIG['product_min_recovery_sleep']:.1f}s, "
+        f"cooldown={CONFIG['product_pressure_cooldown']:.1f}s"
+    )
     print("=" * 60)
 
     # ── Шаг 1: Cookie СИНХРОННО (до event loop) ──────────────────────────────

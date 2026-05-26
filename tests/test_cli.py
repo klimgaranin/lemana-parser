@@ -56,6 +56,36 @@ class CliTests(unittest.TestCase):
         self.assertEqual(CONFIG["max_products"], 7)
         self.assertEqual(CONFIG["product_concurrency"], 2)
 
+    def test_profile_applies_product_settings(self):
+        args = cli._parse_args(["--profile", "careful"])
+
+        cli._apply_cli_overrides(args)
+
+        self.assertEqual(CONFIG["product_concurrency"], 1)
+        self.assertEqual(CONFIG["product_max_active_batch"], 1)
+        self.assertEqual(CONFIG["product_batch_sleep"], 5.0)
+        self.assertEqual(CONFIG["product_pressure_cooldown"], 20.0)
+
+    def test_explicit_cli_overrides_profile(self):
+        args = cli._parse_args(
+            [
+                "--profile",
+                "careful",
+                "--product-concurrency",
+                "2",
+                "--product-batch-sleep",
+                "4",
+                "--product-pressure-cooldown",
+                "15",
+            ]
+        )
+
+        cli._apply_cli_overrides(args)
+
+        self.assertEqual(CONFIG["product_concurrency"], 2)
+        self.assertEqual(CONFIG["product_batch_sleep"], 4.0)
+        self.assertEqual(CONFIG["product_pressure_cooldown"], 15.0)
+
 
 if __name__ == "__main__":
     unittest.main()
