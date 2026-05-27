@@ -72,6 +72,8 @@ CONFIG: Config = {
     # ── Вывод ────────────────────────────────────────────────────────────────
     "output_dir": _env_str("LEMANA_OUTPUT_DIR", "output"),
     "output_filename": _env_str("LEMANA_OUTPUT_FILENAME", "lemana_result.xlsx"),
+    # ── Источник данных ─────────────────────────────────────────────────────
+    "data_source": _env_str("LEMANA_DATA_SOURCE", "html"),
     # ── Ограничители ─────────────────────────────────────────────────────────
     "max_products": _env_int("LEMANA_MAX_PRODUCTS", 100000),
     "max_pages_safety": _env_int("LEMANA_MAX_PAGES_SAFETY", 8000),
@@ -101,7 +103,11 @@ CONFIG: Config = {
     "browser_impersonate": _env_str("LEMANA_BROWSER_IMPERSONATE", "chrome"),
     # ── Cookie recovery ─────────────────────────────────────────────────────
     "cookie_preflight": _env_bool("LEMANA_COOKIE_PREFLIGHT", True),
+    "cookie_preflight_product": _env_bool("LEMANA_COOKIE_PREFLIGHT_PRODUCT", True),
     "cookie_auto_refresh": _env_bool("LEMANA_COOKIE_AUTO_REFRESH", True),
+    # ── API сайта ───────────────────────────────────────────────────────────
+    "api_page_size": _env_int("LEMANA_API_PAGE_SIZE", 60),
+    "api_region_name": _env_str("LEMANA_API_REGION_NAME", "Москва, Московская область"),
     # ── Cookie (Playwright заполняет автоматически) ──────────────────────────
     "cookie": os.getenv("LEMANA_COOKIE", "").strip().strip("\"'"),
 }
@@ -132,6 +138,9 @@ def validate_config(config: Config = CONFIG) -> None:
     if not config["output_filename"].lower().endswith(".xlsx"):
         raise ConfigError("LEMANA_OUTPUT_FILENAME должен оканчиваться на .xlsx")
 
+    if config["data_source"] not in {"html", "api", "api-fallback"}:
+        raise ConfigError("LEMANA_DATA_SOURCE должен быть html, api или api-fallback")
+
     positive_int_keys = [
         "max_products",
         "max_pages_safety",
@@ -140,6 +149,7 @@ def validate_config(config: Config = CONFIG) -> None:
         "catalog_timeout",
         "product_timeout",
         "max_retries",
+        "api_page_size",
     ]
     for key in positive_int_keys:
         if config[key] < 1:
@@ -171,6 +181,9 @@ def validate_config(config: Config = CONFIG) -> None:
 
     if config["product_pressure_cooldown"] < 0:
         raise ConfigError("LEMANA_PRODUCT_PRESSURE_COOLDOWN должен быть >= 0")
+
+    if config["api_page_size"] < 1 or config["api_page_size"] > 60:
+        raise ConfigError("LEMANA_API_PAGE_SIZE должен быть от 1 до 60")
 
     if config["min_sleep_ms"] < 0 or config["max_sleep_ms"] < 0:
         raise ConfigError("LEMANA_MIN_SLEEP_MS и LEMANA_MAX_SLEEP_MS должны быть >= 0")

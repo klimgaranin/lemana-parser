@@ -49,14 +49,21 @@ def harvest_cookies_sync(url: str) -> str:
         if not CONFIG["cookie_preflight"]:
             return existing
 
-        check = check_cookie_sync(url, existing)
+        check = check_cookie_sync(url, existing, check_product=CONFIG["cookie_preflight_product"])
         if check.ok:
-            logger.info(
-                "✅ Cookie проверена: каталог=%s, карточка=%s, карточек на странице=%d",
-                check.catalog_status,
-                check.product_status,
-                check.catalog_cards,
-            )
+            if CONFIG["cookie_preflight_product"]:
+                logger.info(
+                    "✅ Cookie проверена: каталог=%s, карточка=%s, карточек на странице=%d",
+                    check.catalog_status,
+                    check.product_status,
+                    check.catalog_cards,
+                )
+            else:
+                logger.info(
+                    "✅ Cookie проверена для API: каталог=%s, карточек на странице=%d",
+                    check.catalog_status,
+                    check.catalog_cards,
+                )
             return existing
 
         logger.warning("⚠️  Cookie из .env не прошла проверку: %s", check.reason)
@@ -74,7 +81,7 @@ def harvest_cookies_sync(url: str) -> str:
 
     try:
         cookie_str = _playwright_harvest(url)
-        check = check_cookie_sync(url, cookie_str)
+        check = check_cookie_sync(url, cookie_str, check_product=CONFIG["cookie_preflight_product"])
         if "qrator_jsid2" in cookie_str and check.ok:
             logger.info("✅ Playwright получил и проверил qrator_jsid2!")
             return cookie_str
@@ -90,6 +97,8 @@ def harvest_cookies_sync(url: str) -> str:
 
 
 def _harvest_cdp_then_validate(url: str) -> str:
+    from lemana_parser.config import CONFIG
+
     logger.info("🔁 Пробуем автоматически обновить cookie через Chrome CDP...")
     try:
         cookie_str = harvest_cookie_via_cdp(url, save=True)
@@ -97,13 +106,16 @@ def _harvest_cdp_then_validate(url: str) -> str:
         logger.warning("⚠️  CDP cookie refresh не сработал: %s", exc)
         return ""
 
-    check = check_cookie_sync(url, cookie_str)
+    check = check_cookie_sync(url, cookie_str, check_product=CONFIG["cookie_preflight_product"])
     if check.ok:
-        logger.info(
-            "✅ CDP cookie обновлена и проверена: каталог=%s, карточка=%s",
-            check.catalog_status,
-            check.product_status,
-        )
+        if CONFIG["cookie_preflight_product"]:
+            logger.info(
+                "✅ CDP cookie обновлена и проверена: каталог=%s, карточка=%s",
+                check.catalog_status,
+                check.product_status,
+            )
+        else:
+            logger.info("✅ CDP cookie обновлена и проверена для API: каталог=%s", check.catalog_status)
         return cookie_str
 
     logger.warning("⚠️  CDP cookie получена, но не прошла проверку: %s", check.reason)

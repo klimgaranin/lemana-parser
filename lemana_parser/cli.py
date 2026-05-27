@@ -12,6 +12,7 @@ import logging
 import sys
 import time
 import warnings
+from pathlib import Path
 
 from lemana_parser.auth.playwright_auth import harvest_cookies_sync
 from lemana_parser.config import CONFIG, ConfigError, apply_overrides, validate_config
@@ -98,6 +99,19 @@ def _parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--output-filename", help="Имя Excel-файла, должно оканчиваться на .xlsx")
     parser.add_argument("--max-products", type=int, help="Максимум товаров для выгрузки")
     parser.add_argument(
+        "--data-source",
+        choices=["html", "api", "api-fallback"],
+        help="Источник данных: html, api или api-fallback",
+    )
+    parser.add_argument(
+        "--articles",
+        help="Список артикулов ЛМ через запятую/пробел/перенос строки. Использует API.",
+    )
+    parser.add_argument(
+        "--articles-file",
+        help="Файл со списком артикулов ЛМ. Можно разделять запятыми, пробелами или строками.",
+    )
+    parser.add_argument(
         "--profile",
         choices=sorted(PRODUCT_PROFILES),
         help="Профиль загрузки карточек: stable, careful или fast",
@@ -172,6 +186,7 @@ def _apply_cli_overrides(args: argparse.Namespace) -> None:
         catalog_first_page_url=args.url,
         output_dir=args.output_dir,
         output_filename=args.output_filename,
+        data_source=args.data_source,
         max_products=args.max_products,
         max_pages_safety=args.max_pages_safety,
         catalog_concurrency=args.catalog_concurrency,
@@ -186,6 +201,32 @@ def _apply_cli_overrides(args: argparse.Namespace) -> None:
         browser_impersonate=args.browser_impersonate,
         cookie=args.cookie.strip().strip("\"'") if args.cookie else None,
     )
+
+
+def _parse_article_ids(raw: str) -> list[str]:
+    import re
+
+    seen: set[str] = set()
+    result: list[str] = []
+    for article in re.split(r"[\s,;]+", raw or ""):
+        article = article.strip()
+        if article and article not in seen:
+            seen.add(article)
+            result.append(article)
+    return result
+
+
+def _load_article_ids(args: argparse.Namespace) -> list[str]:
+    raw_parts = []
+    if args.articles:
+        raw_parts.append(args.articles)
+    if args.articles_file:
+        path = Path(args.articles_file)
+        try:
+            raw_parts.append(path.read_text(encoding="utf-8"))
+        except OSError as exc:
+            raise ConfigError(f"Не удалось прочитать файл артикулов {path}: {exc}") from exc
+    return _parse_article_ids("\n".join(raw_parts))
 
 
 async def _run_parsing() -> tuple[str, ProductSummary] | None:
@@ -222,19 +263,62 @@ async def _run_parsing() -> tuple[str, ProductSummary] | None:
     return out_path, summary
 
 
+async def _run_api_parsing(article_ids: list[str] | None = None) -> tuple[str, ProductSummary] | None:
+    """API-first сценарий: пачечные данные товаров без загрузки HTML-карточек."""
+    from lemana_parser.api.catalog_api import (
+        fetch_catalog_products_api,
+        fetch_products_by_articles_api,
+    )
+    from lemana_parser.excel_writer import write_xlsx
+    from lemana_parser.http_utils import create_session
+    from lemana_parser.products import summarize_products
+
+    async with create_session() as session:
+        if article_ids:
+            logger.info("📄 Шаг 2/3: Получаем товары по артикулам ЛМ через API...")
+            products, all_char_keys = await fetch_products_by_articles_api(session, article_ids)
+        else:
+            logger.info("📄 Шаг 2/3: Сбор каталога через API...")
+            products, all_char_keys = await fetch_catalog_products_api(session)
+
+    await asyncio.sleep(0)
+
+    logger.info("📝 Запись в Excel...")
+    out_path = write_xlsx(products, all_char_keys)
+    summary = summarize_products(products)
+    logger.info(
+        "Итог: всего=%d, успешно=%d, ошибок=%d, статусы=%s",
+        summary["total"],
+        summary["ok"],
+        summary["errors"],
+        summary["status_counts"],
+    )
+    return out_path, summary
+
+
 def _prepare_cookie_without_playwright() -> bool:
     from lemana_parser.auth.cookie_grabber import CookieGrabberError, harvest_cookie_via_cdp
     from lemana_parser.auth.cookie_health import check_cookie_sync
 
     cookie = (CONFIG.get("cookie") or "").strip()
     if cookie and CONFIG["cookie_preflight"]:
-        check = check_cookie_sync(CONFIG["catalog_first_page_url"], cookie)
+        check = check_cookie_sync(
+            CONFIG["catalog_first_page_url"],
+            cookie,
+            check_product=CONFIG["cookie_preflight_product"],
+        )
         if check.ok:
-            logger.info(
-                "🍪 Cookie проверена без Playwright: каталог=%s, карточка=%s",
-                check.catalog_status,
-                check.product_status,
-            )
+            if CONFIG["cookie_preflight_product"]:
+                logger.info(
+                    "🍪 Cookie проверена без Playwright: каталог=%s, карточка=%s",
+                    check.catalog_status,
+                    check.product_status,
+                )
+            else:
+                logger.info(
+                    "🍪 Cookie проверена без Playwright для API: каталог=%s",
+                    check.catalog_status,
+                )
             return True
         logger.warning("⚠️  Cookie из .env не прошла проверку: %s", check.reason)
     elif cookie:
@@ -254,7 +338,11 @@ def _prepare_cookie_without_playwright() -> bool:
         _log_cookie_setup_help()
         return False
 
-    check = check_cookie_sync(CONFIG["catalog_first_page_url"], refreshed)
+    check = check_cookie_sync(
+        CONFIG["catalog_first_page_url"],
+        refreshed,
+        check_product=CONFIG["cookie_preflight_product"],
+    )
     if not check.ok:
         logger.error("❌ Новая cookie не прошла проверку: %s", check.reason)
         _log_cookie_setup_help()
@@ -276,9 +364,13 @@ def main(argv=None) -> int:
 
     try:
         validate_config()
+        article_ids = _load_article_ids(args)
     except ConfigError as exc:
         logger.error("❌ Ошибка конфигурации: %s", exc)
         return 2
+
+    if article_ids or CONFIG["data_source"] in {"api", "api-fallback"}:
+        CONFIG["cookie_preflight_product"] = False
 
     if args.check_cookie:
         from lemana_parser.diagnostics.check_cookie import main as check_cookie_main
@@ -289,6 +381,9 @@ def main(argv=None) -> int:
     print("🚀  LemanapPRO Parser")
     print(f"   URL    : {CONFIG['catalog_first_page_url']}")
     print(f"   Вывод  : {CONFIG['output_dir']}/{CONFIG['output_filename']}")
+    print(f"   Данные : {CONFIG['data_source']}")
+    if article_ids:
+        print(f"   Артикулы: {len(article_ids)} шт")
     if args.profile:
         print(f"   Профиль: {args.profile}")
     print(
@@ -319,7 +414,18 @@ def main(argv=None) -> int:
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
     try:
-        result = asyncio.run(_run_parsing())
+        if article_ids:
+            result = asyncio.run(_run_api_parsing(article_ids))
+        elif CONFIG["data_source"] == "api":
+            result = asyncio.run(_run_api_parsing())
+        elif CONFIG["data_source"] == "api-fallback":
+            try:
+                result = asyncio.run(_run_api_parsing())
+            except Exception as exc:
+                logger.warning("⚠️  API-режим не сработал: %s. Перехожу на HTML fallback.", exc)
+                result = asyncio.run(_run_parsing())
+        else:
+            result = asyncio.run(_run_parsing())
     except Exception as exc:
         logger.exception("❌ Парсер остановлен из-за ошибки: %s", exc)
         return 1

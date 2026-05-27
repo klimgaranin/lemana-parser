@@ -1,6 +1,6 @@
 # LemanapPRO Parser
 
-HTML-парсер каталога lemanapro.ru: получает cookie, собирает товары из каталога, догружает карточки и сохраняет результат в Excel.
+Парсер каталога lemanapro.ru: получает cookie, собирает товары из каталога или по списку артикулов ЛМ и сохраняет результат в Excel. Основной стабильный режим пока HTML, новый API-режим использует внутренние методы сайта для пачечной загрузки данных товаров.
 
 ## Структура проекта
 
@@ -9,6 +9,7 @@ HTML-парсер каталога lemanapro.ru: получает cookie, соб
 - `cli.py` — CLI и общий сценарий запуска;
 - `config.py` — `.env`, CLI-переопределения и валидация;
 - `catalog.py`, `products.py` — сбор каталога и карточек товаров;
+- `api/` — API-контекст, клиент внутренних методов сайта и нормализация API-ответов;
 - `parsers/html.py` — HTML-парсинг цен, картинок и характеристик;
 - `http_utils.py` — HTTP-сессия, заголовки и retry;
 - `excel_writer.py` — запись результата в Excel;
@@ -45,7 +46,8 @@ setup_win.bat
 
 1. Скопируй `.env.example` в `.env`.
 2. При необходимости измени `LEMANA_CATALOG_URL`, `LEMANA_OUTPUT_DIR`, `LEMANA_OUTPUT_FILENAME`.
-3. Если `LEMANA_COOKIE` пустой или протух, парсер сам попробует обновить cookie через Chrome CDP.
+3. При необходимости измени `LEMANA_DATA_SOURCE`: `html`, `api` или `api-fallback`.
+4. Если `LEMANA_COOKIE` пустой или протух, парсер сам попробует обновить cookie через Chrome CDP.
 
 ## Запуск
 
@@ -59,11 +61,26 @@ run_win.bat
 run_win.bat --url "https://lemanapro.ru/catalogue/..." --max-products 100 --product-concurrency 4
 ```
 
+API-режим для теста:
+
+```bat
+run_win.bat --data-source api-fallback --max-products 100
+```
+
+Выгрузка по списку артикулов ЛМ:
+
+```bat
+run_win.bat --articles "89363286, 89363281, 89413689"
+run_win.bat --articles-file articles.txt
+```
+
 Полезные параметры:
 
 - `--url` — URL первой страницы каталога.
 - `--output-dir` и `--output-filename` — куда сохранить Excel.
 - `--max-products` — ограничение количества товаров.
+- `--data-source html|api|api-fallback` — источник данных. `api-fallback` сначала пробует API, затем текущий HTML-режим.
+- `--articles` и `--articles-file` — выгрузка по списку артикулов ЛМ через API.
 - `--profile stable|careful|fast` — готовый профиль загрузки карточек.
 - `--catalog-concurrency` и `--product-concurrency` — верхняя параллельность запросов.
 - `--product-batch-sleep` — пауза между батчами карточек.
@@ -143,6 +160,16 @@ run_win.bat --profile fast --max-products 30
 ```bat
 run_win.bat --profile careful
 ```
+
+## API-режим
+
+API-режим использует те же cookie и тот же preflight, что HTML-режим. Перед API-запросами парсер один раз загружает первую страницу каталога, вытаскивает из неё API-настройки сайта, затем получает товары пачками через:
+
+- `products:search` — список артикулов товаров;
+- `products-data:search` — названия, цены, ссылки и характеристики;
+- `products-media:search` — изображения.
+
+Это резко уменьшает количество запросов к сайту: вместо отдельной HTML-загрузки каждой карточки используются пачки до 60 товаров. Пока режим нужно считать экспериментальным и запускать через `api-fallback`, чтобы при проблеме автоматически вернуться к проверенному HTML-сценарию.
 
 ## Тесты
 

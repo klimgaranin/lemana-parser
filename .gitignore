@@ -7,6 +7,7 @@ parser.log
 *.log
 *.Zone.Identifier
 *.xlsx
+*.har
 dist/
 build/
 *.spec
@@ -14,3 +15,4 @@ build/
 chrome_cdp_session/
 .chrome_cdp_session/
 .chrome_cdp_profile/
+лемана.json

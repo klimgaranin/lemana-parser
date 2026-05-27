@@ -31,6 +31,9 @@ def _valid_config(**overrides):
             "product_deferred_sleep": 0,
             "product_pressure_cooldown": 12,
             "browser_impersonate": "chrome",
+            "data_source": "html",
+            "api_page_size": 60,
+            "api_region_name": "Москва, Московская область",
         }
     )
     config.update(overrides)
@@ -68,6 +71,14 @@ class ConfigValidationTests(unittest.TestCase):
     def test_rejects_invalid_deferred_rounds(self):
         with self.assertRaisesRegex(ConfigError, "DEFERRED_ROUNDS"):
             validate_config(_valid_config(product_deferred_rounds=0))
+
+    def test_rejects_invalid_data_source(self):
+        with self.assertRaisesRegex(ConfigError, "DATA_SOURCE"):
+            validate_config(_valid_config(data_source="broken"))
+
+    def test_rejects_invalid_api_page_size(self):
+        with self.assertRaisesRegex(ConfigError, "API_PAGE_SIZE"):
+            validate_config(_valid_config(api_page_size=100))
 
 
 if __name__ == "__main__":

@@ -36,6 +36,7 @@ class CliTests(unittest.TestCase):
             patch("lemana_parser.cli.validate_config"),
             patch("lemana_parser.cli._prepare_cookie_without_playwright", return_value=True),
             patch("lemana_parser.cli._run_parsing", new=Mock(return_value="fake-coro")),
+            patch("lemana_parser.cli._run_api_parsing", new=Mock(return_value="fake-api-coro")),
             patch("lemana_parser.cli.asyncio.run", return_value=None),
         ):
             exit_code = cli.main(
@@ -48,6 +49,8 @@ class CliTests(unittest.TestCase):
                     "7",
                     "--product-concurrency",
                     "2",
+                    "--data-source",
+                    "api-fallback",
                 ]
             )
 
@@ -55,6 +58,12 @@ class CliTests(unittest.TestCase):
         self.assertEqual(CONFIG["cookie"], "test_cookie")
         self.assertEqual(CONFIG["max_products"], 7)
         self.assertEqual(CONFIG["product_concurrency"], 2)
+        self.assertEqual(CONFIG["data_source"], "api-fallback")
+
+    def test_parse_article_ids_accepts_common_separators(self):
+        article_ids = cli._parse_article_ids("123, 456\n789;123")
+
+        self.assertEqual(article_ids, ["123", "456", "789"])
 
     def test_profile_applies_product_settings(self):
         args = cli._parse_args(["--profile", "careful"])

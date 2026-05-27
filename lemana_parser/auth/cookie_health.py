@@ -34,8 +34,13 @@ def _count_catalog_cards(html: str) -> int:
     return len(re.findall(r'data-product-id=["\']([^"\']+)["\']', html))
 
 
-def check_cookie_sync(url: str, cookie: str) -> CookieCheckResult:
-    """Проверяет каталог и первую карточку товара одним коротким синхронным запросом."""
+def check_cookie_sync(
+    url: str,
+    cookie: str,
+    *,
+    check_product: bool = True,
+) -> CookieCheckResult:
+    """Проверяет каталог и, если нужно, первую карточку товара."""
     if not cookie:
         return CookieCheckResult(False, "LEMANA_COOKIE пустой")
 
@@ -66,6 +71,14 @@ def check_cookie_sync(url: str, cookie: str) -> CookieCheckResult:
                 return CookieCheckResult(
                     False,
                     f"каталог вернул HTTP {catalog_resp.status_code}",
+                    catalog_status=catalog_resp.status_code,
+                    catalog_cards=catalog_cards,
+                )
+
+            if not check_product:
+                return CookieCheckResult(
+                    True,
+                    "каталог доступен",
                     catalog_status=catalog_resp.status_code,
                     catalog_cards=catalog_cards,
                 )
