@@ -1,6 +1,6 @@
 import unittest
 
-from lemana_parser.api.state import build_plp_api_context
+from lemana_parser.api.state import PlpStateError, build_plp_api_context
 
 
 class ApiStateTests(unittest.TestCase):
@@ -47,9 +47,29 @@ class ApiStateTests(unittest.TestCase):
         self.assertEqual(context.family_id, "family-1")
         self.assertEqual(context.initial_product_ids, ["111", "222"])
         self.assertEqual(context.total_count, 2)
-        self.assertEqual(context.facets, [{"id": "deliveryType", "values": ["Самовывоз в магазине"]}])
+        self.assertEqual(
+            context.facets, [{"id": "deliveryType", "values": ["Самовывоз в магазине"]}]
+        )
+
+    def test_rejects_non_lemana_api_host(self):
+        html = """
+        <script>
+        window.INITIAL_STATE["plp"]={
+          "plp":{
+            "plp":{"products":{"familyId":"family-1"}},
+            "env":{
+              "ORCHESTRATOR_HOST":"https://example.com/hybrid/v1/",
+              "apiKey":"secret-key"
+            },
+            "cookies":{"cookies":{"_regionID":"34"}}
+          }
+        }
+        </script>
+        """
+
+        with self.assertRaisesRegex(PlpStateError, "домен lemanapro.ru"):
+            build_plp_api_context(html, "https://lemanapro.ru/catalogue/test/")
 
 
 if __name__ == "__main__":
     unittest.main()
-

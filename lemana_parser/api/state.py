@@ -60,11 +60,11 @@ def extract_plp_initial_state(html: str) -> dict:
     marker = 'window.INITIAL_STATE["plp"]'
     marker_pos = (html or "").find(marker)
     if marker_pos < 0:
-        raise PlpStateError("не найден window.INITIAL_STATE[\"plp\"]")
+        raise PlpStateError('не найден window.INITIAL_STATE["plp"]')
 
     start = html.find("{", marker_pos)
     if start < 0:
-        raise PlpStateError("не найден JSON после window.INITIAL_STATE[\"plp\"]")
+        raise PlpStateError('не найден JSON после window.INITIAL_STATE["plp"]')
 
     try:
         return json.loads(_extract_balanced_json(html, start))
@@ -90,11 +90,20 @@ def _facets_from_url(url: str) -> list[dict[str, list[str]]]:
     return facets
 
 
+def _validate_api_base_url(api_base_url: str) -> None:
+    parsed = urlsplit(api_base_url)
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme != "https" or not host:
+        raise PlpStateError("ORCHESTRATOR_HOST должен быть HTTPS URL")
+    if host != "api.lemanapro.ru" and not host.endswith(".lemanapro.ru"):
+        raise PlpStateError("ORCHESTRATOR_HOST должен указывать на домен lemanapro.ru")
+
+
 def build_plp_api_context(html: str, catalog_url: str) -> PlpApiContext:
     state = extract_plp_initial_state(html)
     plp_root = state.get("plp") or {}
     env = plp_root.get("env") or {}
-    products_state = ((plp_root.get("plp") or {}).get("products") or {})
+    products_state = (plp_root.get("plp") or {}).get("products") or {}
     cookies = _cookies_from_state(plp_root)
 
     api_base_url = (env.get("ORCHESTRATOR_HOST") or "").strip()
@@ -103,6 +112,7 @@ def build_plp_api_context(html: str, catalog_url: str) -> PlpApiContext:
 
     if not api_base_url:
         raise PlpStateError("в INITIAL_STATE не найден ORCHESTRATOR_HOST")
+    _validate_api_base_url(api_base_url)
     if not api_key:
         raise PlpStateError("в INITIAL_STATE не найден apiKey")
     if not family_id:
@@ -121,4 +131,3 @@ def build_plp_api_context(html: str, catalog_url: str) -> PlpApiContext:
         initial_product_ids=[str(x) for x in products_state.get("productsIds") or []],
         total_count=int(products_state.get("productsCount") or 0),
     )
-

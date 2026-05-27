@@ -101,6 +101,7 @@ CONFIG: Config = {
     "product_pressure_cooldown": _env_float("LEMANA_PRODUCT_PRESSURE_COOLDOWN", 15.0),
     # ── HTTP fingerprint ────────────────────────────────────────────────────
     "browser_impersonate": _env_str("LEMANA_BROWSER_IMPERSONATE", "chrome"),
+    "ssl_verify": _env_bool("LEMANA_SSL_VERIFY", True),
     # ── Cookie recovery ─────────────────────────────────────────────────────
     "cookie_preflight": _env_bool("LEMANA_COOKIE_PREFLIGHT", True),
     "cookie_preflight_product": _env_bool("LEMANA_COOKIE_PREFLIGHT_PRODUCT", True),
@@ -162,7 +163,9 @@ def validate_config(config: Config = CONFIG) -> None:
         raise ConfigError("LEMANA_PRODUCT_BATCH_SLEEP должен быть >= 0")
 
     if config["product_max_batch_sleep"] < config["product_batch_sleep"]:
-        raise ConfigError("LEMANA_PRODUCT_MAX_BATCH_SLEEP должен быть >= LEMANA_PRODUCT_BATCH_SLEEP")
+        raise ConfigError(
+            "LEMANA_PRODUCT_MAX_BATCH_SLEEP должен быть >= LEMANA_PRODUCT_BATCH_SLEEP"
+        )
 
     if config["product_recovery_batches"] < 1:
         raise ConfigError("LEMANA_PRODUCT_RECOVERY_BATCHES должен быть >= 1")

@@ -47,7 +47,7 @@ def check_cookie_sync(
     try:
         with CurlSession(
             impersonate=CONFIG["browser_impersonate"],
-            verify=False,
+            verify=CONFIG["ssl_verify"],
             cookies=parse_cookie_header(cookie),
         ) as session:
             catalog_resp = session.get(

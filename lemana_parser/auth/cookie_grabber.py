@@ -272,7 +272,7 @@ def main(argv: list[str] | None = None) -> None:
     print(f"   qrator_jsid2: {'✓' if has_qrator else '✗ ОТСУТСТВУЕТ'}")
 
     print("\n✅ Сохранено в .env")
-    print("   Теперь запускай: run_win.bat")
+    print(r"   Теперь запускай: .\run_win.bat")
 
     if not has_qrator:
         print("\n⚠️  qrator_jsid2 отсутствует — смотри ИНСТРУКЦИЯ_COOKIE.txt")

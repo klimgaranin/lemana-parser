@@ -24,10 +24,10 @@
 ```bat
 git clone https://github.com/klimgaranin/lemana-parser.git
 cd lemana-parser
-setup_win.bat
+.\setup_win.bat
 copy .env.example .env
-scripts\check_win.bat
-run_win.bat --help
+.\scripts\check_win.bat
+.\run_win.bat --help
 ```
 
 После этого вставь актуальную cookie в `.env` и запускай диагностику:
@@ -37,10 +37,10 @@ run_win.bat --help
 ```
 
 ```bat
-setup_win.bat
+.\setup_win.bat
 ```
 
-Скрипт создаёт `.venv`, устанавливает зависимости из `requirements.txt` и Chromium для Playwright. Проект можно хранить в Git, выгрузить на любой Windows-компьютер, запустить `setup_win.bat`, заполнить `.env` и работать через `run_win.bat`.
+Скрипт создаёт `.venv`, устанавливает зависимости из `requirements.txt` и Chromium для Playwright. Проект можно хранить в Git, выгрузить на любой Windows-компьютер, запустить `.\setup_win.bat`, заполнить `.env` и работать через `.\run_win.bat`.
 
 ## Настройка
 
@@ -52,26 +52,26 @@ setup_win.bat
 ## Запуск
 
 ```bat
-run_win.bat
+.\run_win.bat
 ```
 
 Параметры можно передавать без редактирования `.env`:
 
 ```bat
-run_win.bat --url "https://lemanapro.ru/catalogue/..." --max-products 100 --product-concurrency 4
+.\run_win.bat --url "https://lemanapro.ru/catalogue/..." --max-products 100 --product-concurrency 4
 ```
 
 Обычный запуск уже использует `api-fallback`. Явно указать режим можно так:
 
 ```bat
-run_win.bat --data-source api-fallback --max-products 100
+.\run_win.bat --data-source api-fallback --max-products 100
 ```
 
 Выгрузка по списку артикулов ЛМ:
 
 ```bat
-run_win.bat --articles "89363286, 89363281, 89413689"
-run_win.bat --articles-file articles.txt
+.\run_win.bat --articles "89363286, 89363281, 89413689"
+.\run_win.bat --articles-file articles.txt
 ```
 
 Полезные параметры:
@@ -113,9 +113,22 @@ PowerShell запускает `.bat` из текущей папки только
 ```env
 LEMANA_COOKIE_PREFLIGHT=true
 LEMANA_COOKIE_AUTO_REFRESH=true
+LEMANA_SSL_VERIFY=true
 ```
 
 Если автообновление не сработало, смотри причину в логе: Chrome не найден, CDP не поднялся, Qrator не выдал `qrator_jsid2` или новая cookie не прошла проверку.
+
+## Безопасность и локальные файлы
+
+`.env`, cookie, HAR-файлы, сохранённые HTML-снимки, логи и Excel-выгрузки не должны попадать в Git. Эти файлы уже добавлены в `.gitignore`, но после диагностики их лучше удалять из рабочей папки.
+
+HTTPS-сертификаты проверяются по умолчанию:
+
+```env
+LEMANA_SSL_VERIFY=true
+```
+
+Отключать проверку через `LEMANA_SSL_VERIFY=false` стоит только как временную диагностику на проблемном компьютере, где явно сломано хранилище сертификатов.
 
 ## Скорость и антибот-ограничения
 
@@ -142,15 +155,15 @@ LEMANA_PRODUCT_PRESSURE_COOLDOWN=15.0
 `LEMANA_PRODUCT_PRESSURE_COOLDOWN` задаёт паузу напрямую. Она не умножается на `LEMANA_PRODUCT_MIN_RECOVERY_SLEEP`, поэтому можно отдельно держать карточки медленными, а cooldown оставить 15-20 секунд:
 
 ```bat
-run_win.bat --product-batch-sleep 4 --product-min-recovery-sleep 4 --product-pressure-cooldown 15
+.\run_win.bat --product-batch-sleep 4 --product-min-recovery-sleep 4 --product-pressure-cooldown 15
 ```
 
 Готовые профили:
 
 ```bat
-run_win.bat --profile stable
-run_win.bat --profile careful
-run_win.bat --profile fast --max-products 30
+.\run_win.bat --profile stable
+.\run_win.bat --profile careful
+.\run_win.bat --profile fast --max-products 30
 ```
 
 - `stable` — основной боевой режим: `batch<=2`, пауза 4 сек, cooldown 15 сек.
@@ -160,7 +173,7 @@ run_win.bat --profile fast --max-products 30
 Если даже стабильный режим часто ловит `403`, запусти максимально бережно:
 
 ```bat
-run_win.bat --profile careful
+.\run_win.bat --profile careful
 ```
 
 ## API-режим
@@ -184,7 +197,7 @@ API-режим использует те же cookie и тот же preflight, �
 Запускай тесты через виртуальное окружение проекта:
 
 ```bat
-scripts\test_win.bat
+.\scripts\test_win.bat
 ```
 
 Для WSL/Linux-разработки аналог:
@@ -196,20 +209,20 @@ scripts/test_dev.sh
 Полная локальная проверка без боевого парсинга:
 
 ```bat
-scripts\check_win.bat
+.\scripts\check_win.bat
 ```
 
 Проверка и форматирование кода:
 
 ```bat
-scripts\lint_win.bat
-scripts\format_win.bat
+.\scripts\lint_win.bat
+.\scripts\format_win.bat
 ```
 
 Очистка локальных артефактов разработки:
 
 ```bat
-scripts\clean_dev.bat
+.\scripts\clean_dev.bat
 ```
 
 ## Малый безопасный прогон

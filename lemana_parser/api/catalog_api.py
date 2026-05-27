@@ -39,7 +39,11 @@ async def _load_products_batch(
     sort_id: str | None = None,
 ) -> list[Product]:
     products_data = await client.get_products_data(product_ids, sort_id=sort_id)
-    media_map = await client.get_products_media(product_ids)
+    try:
+        media_map = await client.get_products_media(product_ids)
+    except LemanaApiError as exc:
+        logger.warning("API медиа не загрузились, продолжаем без них: %s", exc)
+        media_map = {}
 
     products_by_id = {
         str(product_data.get("productId")): normalize_api_product(
@@ -48,7 +52,25 @@ async def _load_products_batch(
         )
         for product_data in products_data
     }
-    return [products_by_id[product_id] for product_id in product_ids if product_id in products_by_id]
+    result: list[Product] = []
+    for product_id in product_ids:
+        product = products_by_id.get(product_id)
+        if product:
+            result.append(product)
+        else:
+            result.append(
+                {
+                    "status": "api_data_missing",
+                    "error": "API вернул артикул в поиске, но не вернул данные товара",
+                    "article": product_id,
+                    "url": "",
+                    "name": "",
+                    "price": "",
+                    "image": "",
+                    "characteristics": {},
+                }
+            )
+    return result
 
 
 async def fetch_products_by_articles_api(
@@ -74,7 +96,9 @@ async def fetch_products_by_articles_api(
             char_keys.update(product.get("characteristics") or {})
         products.extend(batch)
 
-    missed = [article for article in clean_ids if article not in {p.get("article") for p in products}]
+    missed = [
+        article for article in clean_ids if article not in {p.get("article") for p in products}
+    ]
     for article in missed:
         products.append(
             {
@@ -89,7 +113,9 @@ async def fetch_products_by_articles_api(
             }
         )
 
-    logger.info("API по артикулам: найдено=%d, не найдено=%d", len(products) - len(missed), len(missed))
+    logger.info(
+        "API по артикулам: найдено=%d, не найдено=%d", len(products) - len(missed), len(missed)
+    )
     return products, sorted(char_keys)
 
 
@@ -134,4 +160,3 @@ async def fetch_catalog_products_api(session: AsyncSession) -> tuple[list[Produc
 
     logger.info("API каталог: собрано %d товаров", len(products))
     return products, sorted(char_keys)
-
