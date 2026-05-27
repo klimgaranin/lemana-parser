@@ -73,7 +73,7 @@ CONFIG: Config = {
     "output_dir": _env_str("LEMANA_OUTPUT_DIR", "output"),
     "output_filename": _env_str("LEMANA_OUTPUT_FILENAME", "lemana_result.xlsx"),
     # ── Источник данных ─────────────────────────────────────────────────────
-    "data_source": _env_str("LEMANA_DATA_SOURCE", "html"),
+    "data_source": _env_str("LEMANA_DATA_SOURCE", "api-fallback"),
     # ── Ограничители ─────────────────────────────────────────────────────────
     "max_products": _env_int("LEMANA_MAX_PRODUCTS", 100000),
     "max_pages_safety": _env_int("LEMANA_MAX_PAGES_SAFETY", 8000),

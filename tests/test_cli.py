@@ -65,6 +65,16 @@ class CliTests(unittest.TestCase):
 
         self.assertEqual(article_ids, ["123", "456", "789"])
 
+    def test_display_data_source_for_articles_is_api(self):
+        CONFIG["data_source"] = "html"
+
+        self.assertEqual(cli._display_data_source(["123"]), "api (по артикулам ЛМ)")
+
+    def test_display_data_source_for_api_fallback_is_explicit(self):
+        CONFIG["data_source"] = "api-fallback"
+
+        self.assertEqual(cli._display_data_source([]), "api-fallback (API → HTML fallback)")
+
     def test_profile_applies_product_settings(self):
         args = cli._parse_args(["--profile", "careful"])
 

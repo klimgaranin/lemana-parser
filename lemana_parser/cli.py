@@ -229,6 +229,16 @@ def _load_article_ids(args: argparse.Namespace) -> list[str]:
     return _parse_article_ids("\n".join(raw_parts))
 
 
+def _display_data_source(article_ids: list[str]) -> str:
+    if article_ids:
+        return "api (по артикулам ЛМ)"
+    if CONFIG["data_source"] == "api-fallback":
+        return "api-fallback (API → HTML fallback)"
+    if CONFIG["data_source"] == "api":
+        return "api"
+    return "html"
+
+
 async def _run_parsing() -> tuple[str, ProductSummary] | None:
     """Асинхронная часть: curl_cffi каталог + карточки + xlsx."""
     from lemana_parser.catalog import collect_catalog_items
@@ -381,7 +391,7 @@ def main(argv=None) -> int:
     print("🚀  LemanapPRO Parser")
     print(f"   URL    : {CONFIG['catalog_first_page_url']}")
     print(f"   Вывод  : {CONFIG['output_dir']}/{CONFIG['output_filename']}")
-    print(f"   Данные : {CONFIG['data_source']}")
+    print(f"   Данные : {_display_data_source(article_ids)}")
     if article_ids:
         print(f"   Артикулы: {len(article_ids)} шт")
     if args.profile:

@@ -30,3 +30,4 @@
 - По HAR-файлам подтверждён перспективный API-путь: каталог можно собирать через `hybrid/v1/products:search`, `products-data:search`, `products-media:search` и `getRatings`, чтобы уйти от массовой загрузки HTML-карточек.
 - Следующий крупный этап — отдельный API-слой и UI: выбор одной или нескольких категорий, настройка фильтров, запуск выгрузки в Excel, режим по списку артикулов ЛМ, автопроверка/обновление cookie и fallback на текущий стабильный HTML-режим.
 - Первый API-слой добавлен: `LEMANA_DATA_SOURCE=api|api-fallback`, CLI `--data-source`, выгрузка по `--articles` / `--articles-file`, API preflight без обязательной проверки HTML-карточки. Нужен боевой Windows-тест `.\run_win.bat --data-source api-fallback --max-products 30`.
+- Боевые Windows-тесты API подтверждены: каталог 381 товаров за 6.8 сек, каталог 263 товара за 6.1 сек, выгрузка по артикулам ЛМ работает. `api-fallback` нужно держать основным режимом, HTML оставить резервом.
