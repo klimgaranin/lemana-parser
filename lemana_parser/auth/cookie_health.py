@@ -9,6 +9,7 @@ from curl_cffi.requests import Session as CurlSession
 
 from lemana_parser.config import CONFIG
 from lemana_parser.http_utils import build_headers, parse_cookie_header
+from lemana_parser.ssl_config import get_ssl_verify
 
 logger = logging.getLogger("cookie_health")
 
@@ -47,7 +48,7 @@ def check_cookie_sync(
     try:
         with CurlSession(
             impersonate=CONFIG["browser_impersonate"],
-            verify=CONFIG["ssl_verify"],
+            verify=get_ssl_verify(),
             cookies=parse_cookie_header(cookie),
         ) as session:
             catalog_resp = session.get(

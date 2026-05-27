@@ -10,6 +10,7 @@ from urllib.parse import quote, urlparse, urlunparse
 from curl_cffi.requests import AsyncSession
 
 from lemana_parser.config import CONFIG
+from lemana_parser.ssl_config import get_ssl_verify
 
 logger = logging.getLogger("http_utils")
 
@@ -87,7 +88,7 @@ def create_session() -> AsyncSession:
     """
     return AsyncSession(
         impersonate=CONFIG["browser_impersonate"],
-        verify=CONFIG["ssl_verify"],
+        verify=get_ssl_verify(),
         timeout=max(CONFIG["catalog_timeout"], CONFIG["product_timeout"]) + 10,
         cookies=parse_cookie_header(CONFIG["cookie"]),
     )

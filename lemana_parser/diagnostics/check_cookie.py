@@ -7,6 +7,7 @@ from urllib.parse import urljoin
 
 from lemana_parser.config import CONFIG, ConfigError, validate_config
 from lemana_parser.http_utils import build_headers, describe_cookie
+from lemana_parser.ssl_config import get_ssl_verify
 
 IMPORTANT_COOKIE_KEYS = [
     "qrator_jsid2",
@@ -125,7 +126,7 @@ def _print_response_diagnostics(url: str, cookie: str) -> None:
     try:
         with CurlSession(
             impersonate=CONFIG["browser_impersonate"],
-            verify=CONFIG["ssl_verify"],
+            verify=get_ssl_verify(),
         ) as session:
             resp = _request_html(session, url, cookie)
             html = resp.text or ""
