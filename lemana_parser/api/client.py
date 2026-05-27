@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Iterable
-from urllib.parse import urljoin
 
 from curl_cffi.requests import AsyncSession
 
@@ -43,8 +42,13 @@ class LemanaApiClient:
             headers["x-request-id"] = self.context.request_id
         return headers
 
+    def _url(self, method: str) -> str:
+        # В API Лемана есть методы с двоеточием (`products:search`).
+        # `urljoin` воспринимает такие строки как схему URL, поэтому путь собираем явно.
+        return self.context.api_base_url.rstrip("/") + "/" + method.lstrip("/")
+
     async def _post(self, method: str, payload: dict, *, query: dict | None = None) -> dict:
-        url = urljoin(self.context.api_base_url, method)
+        url = self._url(method)
         params = {"lang": "ru"}
         if query:
             params.update(query)
@@ -117,4 +121,3 @@ class LemanaApiClient:
         if not isinstance(media, dict):
             raise LemanaApiError("products-media:search: data должен быть объектом")
         return {str(key): value for key, value in media.items() if isinstance(value, dict)}
-
