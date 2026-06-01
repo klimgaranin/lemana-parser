@@ -303,9 +303,14 @@ async def _run_api_parsing(article_ids: list[str] | None = None) -> tuple[str, P
         fetch_catalog_products_api,
         fetch_products_by_articles_api,
     )
+    from lemana_parser.api.debug_log import get_api_debug_log_path
     from lemana_parser.excel_writer import write_xlsx
     from lemana_parser.http_utils import create_session
     from lemana_parser.products import summarize_products
+
+    debug_log_path = get_api_debug_log_path()
+    if debug_log_path:
+        logger.info("🧾 API debug-log: %s", debug_log_path)
 
     async with create_session() as session:
         if article_ids:

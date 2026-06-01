@@ -37,6 +37,11 @@ def _valid_config(**overrides):
             "api_request_sleep": 0,
             "api_max_retries": 3,
             "api_antibot_cooldown": 15,
+            "api_debug_log_enabled": True,
+            "api_debug_log_dir": "logs/api_debug",
+            "api_debug_log_retention_days": 7,
+            "api_debug_log_body_limit": 8000,
+            "api_debug_log_success_body": False,
             "api_region_name": "Москва, Московская область",
         }
     )
@@ -91,6 +96,10 @@ class ConfigValidationTests(unittest.TestCase):
     def test_rejects_negative_api_cooldown(self):
         with self.assertRaisesRegex(ConfigError, "API_ANTIBOT_COOLDOWN"):
             validate_config(_valid_config(api_antibot_cooldown=-1))
+
+    def test_rejects_too_small_api_debug_body_limit(self):
+        with self.assertRaisesRegex(ConfigError, "API_DEBUG_LOG_BODY_LIMIT"):
+            validate_config(_valid_config(api_debug_log_body_limit=99))
 
 
 if __name__ == "__main__":

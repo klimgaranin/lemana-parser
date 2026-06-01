@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections.abc import Iterable
 
 from curl_cffi.requests import AsyncSession
 
+from lemana_parser.api.debug_log import log_api_request, log_api_response
 from lemana_parser.api.state import PlpApiContext
 from lemana_parser.config import CONFIG
 
@@ -71,14 +73,32 @@ class LemanaApiClient:
         if query:
             params.update(query)
 
+        headers = self._headers()
         last_status: int | None = None
         for attempt in range(1, CONFIG["api_max_retries"] + 1):
+            log_api_request(
+                method=method,
+                url=url,
+                params=params,
+                headers=headers,
+                payload=payload,
+                attempt=attempt,
+            )
+            started_at = time.monotonic()
             response = await self.session.post(
                 url,
                 params=params,
                 json=payload,
-                headers=self._headers(),
+                headers=headers,
                 timeout=CONFIG["catalog_timeout"],
+            )
+            elapsed_ms = int((time.monotonic() - started_at) * 1000)
+            log_api_response(
+                method=method,
+                url=url,
+                attempt=attempt,
+                elapsed_ms=elapsed_ms,
+                response=response,
             )
             last_status = response.status_code
             if response.status_code < 400:
