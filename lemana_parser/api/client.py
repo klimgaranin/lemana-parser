@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
 import time
 from collections.abc import Iterable
 
@@ -26,18 +25,14 @@ class LemanaApiError(RuntimeError):
         *,
         method: str | None = None,
         status_code: int | None = None,
-        qrator_blocked: bool = False,
-        support_id: str | None = None,
     ) -> None:
         super().__init__(message)
         self.method = method
         self.status_code = status_code
-        self.qrator_blocked = qrator_blocked
-        self.support_id = support_id
 
     @property
     def is_pressure_status(self) -> bool:
-        return self.qrator_blocked or self.status_code in {403, 429} or (
+        return self.status_code in {403, 429} or (
             self.status_code is not None and self.status_code >= 500
         )
 
@@ -45,39 +40,6 @@ class LemanaApiError(RuntimeError):
 def chunked(items: list[str], size: int) -> Iterable[list[str]]:
     for start in range(0, len(items), size):
         yield items[start : start + size]
-
-
-def _response_text(response) -> str:
-    text = getattr(response, "text", "")
-    if callable(text):
-        try:
-            text = text()
-        except Exception:
-            text = ""
-    if isinstance(text, bytes):
-        return text.decode("utf-8", errors="replace")
-    return str(text or "")
-
-
-def _is_qrator_access_blocked(response) -> bool:
-    headers = getattr(response, "headers", {}) or {}
-    server = str(headers.get("server") or headers.get("Server") or "").lower()
-    content_type = str(
-        headers.get("content-type") or headers.get("Content-Type") or ""
-    ).lower()
-    body = _response_text(response).lower()
-    return (
-        getattr(response, "status_code", None) == 403
-        and "qrator" in server
-        and "text/html" in content_type
-        and "access to resource was blocked" in body
-    )
-
-
-def _extract_qrator_support_id(response) -> str | None:
-    body = _response_text(response)
-    match = re.search(r"Reason or support ID:\s*([0-9a-fA-F-]+)", body)
-    return match.group(1) if match else None
 
 
 class LemanaApiClient:
@@ -141,24 +103,6 @@ class LemanaApiClient:
             last_status = response.status_code
             if response.status_code < 400:
                 break
-
-            qrator_blocked = _is_qrator_access_blocked(response)
-            if qrator_blocked:
-                support_id = _extract_qrator_support_id(response)
-                logger.warning(
-                    "%s: QRATOR Access Blocked, support_id=%s. "
-                    "Не повторяем тот же payload, передаём batch в adaptive split.",
-                    method,
-                    support_id or "нет",
-                )
-                raise LemanaApiError(
-                    f"{method}: QRATOR Access Blocked"
-                    + (f" support_id={support_id}" if support_id else ""),
-                    method=method,
-                    status_code=response.status_code,
-                    qrator_blocked=True,
-                    support_id=support_id,
-                )
 
             can_retry = response.status_code in {403, 429} or response.status_code >= 500
             if not can_retry or attempt >= CONFIG["api_max_retries"]:
