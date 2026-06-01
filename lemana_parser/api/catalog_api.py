@@ -151,9 +151,11 @@ async def _load_articles_batch_resilient(
             mid = len(product_ids) // 2
             left = product_ids[:mid]
             right = product_ids[mid:]
+            pressure_kind = "QRATOR" if exc.qrator_blocked else "API pressure"
             logger.warning(
-                "API по артикулам: batch=%d получил %s, делим на %d + %d",
+                "API по артикулам: batch=%d получил %s (%s), делим на %d + %d",
                 len(product_ids),
+                pressure_kind,
                 exc,
                 len(left),
                 len(right),

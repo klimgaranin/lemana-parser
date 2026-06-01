@@ -1,8 +1,9 @@
+import asyncio
 import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
-from lemana_parser.api.client import LemanaApiClient
+from lemana_parser.api.client import LemanaApiClient, LemanaApiError
 from lemana_parser.api.state import PlpApiContext
 from lemana_parser.config import CONFIG
 
@@ -44,8 +45,6 @@ class ApiClientTests(unittest.TestCase):
         session = SimpleNamespace(post=self._fake_post)
         client = self._client(session=session)
 
-        import asyncio
-
         asyncio.run(
             client.get_products_data(
                 ["111"],
@@ -78,8 +77,6 @@ class ApiClientTests(unittest.TestCase):
         CONFIG["api_max_retries"] = 2
         CONFIG["api_antibot_cooldown"] = 0
         try:
-            import asyncio
-
             with patch("lemana_parser.api.client.asyncio.sleep", new=AsyncMock()):
                 result = asyncio.run(client.get_products_data(["111"]))
         finally:
@@ -89,11 +86,40 @@ class ApiClientTests(unittest.TestCase):
         self.assertEqual(result, [])
         self.assertEqual(session.calls, 2)
 
+    def test_post_does_not_retry_qrator_access_blocked(self):
+        class QratorSession:
+            def __init__(self):
+                self.calls = 0
+
+            async def post(self, *args, **kwargs):
+                self.calls += 1
+                return SimpleNamespace(
+                    status_code=403,
+                    headers={"server": "QRATOR", "content-type": "text/html"},
+                    text=(
+                        "<html>Access to resource was blocked.<br>"
+                        "Reason or support ID: 019e842c-227a-7430-b41e-85d3dba0c7f3."
+                        "</html>"
+                    ),
+                    json=lambda: {},
+                )
+
+        session = QratorSession()
+        client = self._client(session=session)
+
+        with self.assertRaises(LemanaApiError) as ctx:
+            asyncio.run(client.get_products_data(["111"]))
+
+        self.assertTrue(ctx.exception.qrator_blocked)
+        self.assertEqual(
+            ctx.exception.support_id,
+            "019e842c-227a-7430-b41e-85d3dba0c7f3",
+        )
+        self.assertEqual(session.calls, 1)
+
     def test_api_debug_log_redacts_sensitive_headers(self):
         session = SimpleNamespace(post=self._fake_post)
         client = self._client(session=session)
-
-        import asyncio
 
         events = []
         old_enabled = CONFIG["api_debug_log_enabled"]
