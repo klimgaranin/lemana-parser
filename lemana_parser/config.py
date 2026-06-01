@@ -76,6 +76,7 @@ CONFIG: Config = {
     "data_source": _env_str("LEMANA_DATA_SOURCE", "api-fallback"),
     # ── Ограничители ─────────────────────────────────────────────────────────
     "max_products": _env_int("LEMANA_MAX_PRODUCTS", 100000),
+    "max_articles": _env_int("LEMANA_MAX_ARTICLES", 0),
     "max_pages_safety": _env_int("LEMANA_MAX_PAGES_SAFETY", 8000),
     # ── Параллелизм ──────────────────────────────────────────────────────────
     "catalog_concurrency": _env_int("LEMANA_CATALOG_CONCURRENCY", 8),
@@ -109,6 +110,7 @@ CONFIG: Config = {
     # ── API сайта ───────────────────────────────────────────────────────────
     "api_page_size": _env_int("LEMANA_API_PAGE_SIZE", 60),
     "api_articles_sleep": _env_float("LEMANA_API_ARTICLES_SLEEP", 0.0),
+    "api_articles_mode": _env_str("LEMANA_API_ARTICLES_MODE", "strict-then-relaxed"),
     "api_region_name": _env_str("LEMANA_API_REGION_NAME", "Москва, Московская область"),
     # ── Cookie (Playwright заполняет автоматически) ──────────────────────────
     "cookie": os.getenv("LEMANA_COOKIE", "").strip().strip("\"'"),
@@ -142,6 +144,11 @@ def validate_config(config: Config = CONFIG) -> None:
 
     if config["data_source"] not in {"html", "api", "api-fallback"}:
         raise ConfigError("LEMANA_DATA_SOURCE должен быть html, api или api-fallback")
+
+    if config["api_articles_mode"] not in {"strict-then-relaxed", "relaxed"}:
+        raise ConfigError(
+            "LEMANA_API_ARTICLES_MODE должен быть strict-then-relaxed или relaxed"
+        )
 
     positive_int_keys = [
         "max_products",
@@ -186,8 +193,11 @@ def validate_config(config: Config = CONFIG) -> None:
     if config["product_pressure_cooldown"] < 0:
         raise ConfigError("LEMANA_PRODUCT_PRESSURE_COOLDOWN должен быть >= 0")
 
-    if config["api_page_size"] < 1 or config["api_page_size"] > 60:
-        raise ConfigError("LEMANA_API_PAGE_SIZE должен быть от 1 до 60")
+    if config["api_page_size"] < 1 or config["api_page_size"] > 100:
+        raise ConfigError("LEMANA_API_PAGE_SIZE должен быть от 1 до 100")
+
+    if config["max_articles"] < 0:
+        raise ConfigError("LEMANA_MAX_ARTICLES должен быть >= 0")
 
     if config["api_articles_sleep"] < 0:
         raise ConfigError("LEMANA_API_ARTICLES_SLEEP должен быть >= 0")

@@ -126,6 +126,22 @@ class ApiCatalogTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(client.calls), 2)
         self.assertTrue(all(call["include_region"] for call in client.calls))
 
+    async def test_articles_relaxed_mode_starts_without_facets_and_eligibility(self):
+        client = FakeRelaxedClient()
+
+        products = await _load_products_batch(
+            client,
+            ["111"],
+            relaxed_missing_retry=True,
+            articles_mode="relaxed",
+        )
+
+        self.assertEqual(products[0]["status"], "ok")
+        self.assertEqual(len(client.calls), 1)
+        self.assertFalse(client.calls[0]["include_facets"])
+        self.assertFalse(client.calls[0]["filter_by_eligibility"])
+        self.assertTrue(client.calls[0]["include_region"])
+
     async def test_articles_api_sleep_runs_between_batches_only(self):
         old_page_size = CONFIG["api_page_size"]
         old_sleep = CONFIG["api_articles_sleep"]

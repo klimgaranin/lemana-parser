@@ -117,6 +117,24 @@ def _parse_args(argv=None) -> argparse.Namespace:
         help="Пауза между API-батчами в режиме --articles/--articles-file, сек",
     )
     parser.add_argument(
+        "--api-page-size",
+        type=int,
+        help="Размер API-батча для каталога и списка артикулов",
+    )
+    parser.add_argument(
+        "--api-articles-mode",
+        choices=["strict-then-relaxed", "relaxed"],
+        help=(
+            "Режим products-data для списка артикулов: strict-then-relaxed "
+            "или relaxed"
+        ),
+    )
+    parser.add_argument(
+        "--max-articles",
+        type=int,
+        help="Ограничить количество артикулов после чтения и удаления дублей",
+    )
+    parser.add_argument(
         "--profile",
         choices=sorted(PRODUCT_PROFILES),
         help="Профиль загрузки карточек: stable, careful или fast",
@@ -203,7 +221,10 @@ def _apply_cli_overrides(args: argparse.Namespace) -> None:
         product_pressure_cooldown=args.product_pressure_cooldown,
         product_deferred_rounds=args.product_deferred_rounds,
         product_deferred_sleep=args.product_deferred_sleep,
+        api_page_size=args.api_page_size,
         api_articles_sleep=args.api_articles_sleep,
+        api_articles_mode=args.api_articles_mode,
+        max_articles=args.max_articles,
         browser_impersonate=args.browser_impersonate,
         cookie=args.cookie.strip().strip("\"'") if args.cookie else None,
     )
@@ -232,7 +253,15 @@ def _load_article_ids(args: argparse.Namespace) -> list[str]:
             raw_parts.append(path.read_text(encoding="utf-8"))
         except OSError as exc:
             raise ConfigError(f"Не удалось прочитать файл артикулов {path}: {exc}") from exc
-    return _parse_article_ids("\n".join(raw_parts))
+    article_ids = _parse_article_ids("\n".join(raw_parts))
+    if CONFIG["max_articles"] > 0 and len(article_ids) > CONFIG["max_articles"]:
+        logger.info(
+            "Артикулы: применён лимит %d из %d",
+            CONFIG["max_articles"],
+            len(article_ids),
+        )
+        return article_ids[: CONFIG["max_articles"]]
+    return article_ids
 
 
 def _display_data_source(article_ids: list[str]) -> str:
@@ -403,7 +432,8 @@ def main(argv=None) -> int:
         print(
             "   API batch: "
             f"{CONFIG['api_page_size']} шт, "
-            f"sleep={CONFIG['api_articles_sleep']:.1f}s"
+            f"sleep={CONFIG['api_articles_sleep']:.1f}s, "
+            f"mode={CONFIG['api_articles_mode']}"
         )
     if args.profile:
         print(f"   Профиль: {args.profile}")

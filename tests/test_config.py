@@ -32,8 +32,10 @@ def _valid_config(**overrides):
             "product_pressure_cooldown": 12,
             "browser_impersonate": "chrome",
             "data_source": "html",
+            "max_articles": 0,
             "api_page_size": 60,
             "api_articles_sleep": 0,
+            "api_articles_mode": "strict-then-relaxed",
             "api_region_name": "Москва, Московская область",
         }
     )
@@ -79,11 +81,19 @@ class ConfigValidationTests(unittest.TestCase):
 
     def test_rejects_invalid_api_page_size(self):
         with self.assertRaisesRegex(ConfigError, "API_PAGE_SIZE"):
-            validate_config(_valid_config(api_page_size=100))
+            validate_config(_valid_config(api_page_size=101))
 
     def test_rejects_negative_api_articles_sleep(self):
         with self.assertRaisesRegex(ConfigError, "API_ARTICLES_SLEEP"):
             validate_config(_valid_config(api_articles_sleep=-1))
+
+    def test_rejects_invalid_api_articles_mode(self):
+        with self.assertRaisesRegex(ConfigError, "API_ARTICLES_MODE"):
+            validate_config(_valid_config(api_articles_mode="broken"))
+
+    def test_rejects_negative_max_articles(self):
+        with self.assertRaisesRegex(ConfigError, "MAX_ARTICLES"):
+            validate_config(_valid_config(max_articles=-1))
 
 
 if __name__ == "__main__":

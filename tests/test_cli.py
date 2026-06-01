@@ -51,6 +51,12 @@ class CliTests(unittest.TestCase):
                     "2",
                     "--api-articles-sleep",
                     "3",
+                    "--api-page-size",
+                    "100",
+                    "--api-articles-mode",
+                    "relaxed",
+                    "--max-articles",
+                    "10",
                     "--data-source",
                     "api-fallback",
                 ]
@@ -61,12 +67,23 @@ class CliTests(unittest.TestCase):
         self.assertEqual(CONFIG["max_products"], 7)
         self.assertEqual(CONFIG["product_concurrency"], 2)
         self.assertEqual(CONFIG["api_articles_sleep"], 3.0)
+        self.assertEqual(CONFIG["api_page_size"], 100)
+        self.assertEqual(CONFIG["api_articles_mode"], "relaxed")
+        self.assertEqual(CONFIG["max_articles"], 10)
         self.assertEqual(CONFIG["data_source"], "api-fallback")
 
     def test_parse_article_ids_accepts_common_separators(self):
         article_ids = cli._parse_article_ids("123, 456\n789;123")
 
         self.assertEqual(article_ids, ["123", "456", "789"])
+
+    def test_load_article_ids_applies_max_articles_after_deduplication(self):
+        CONFIG["max_articles"] = 2
+        args = cli._parse_args(["--articles", "123, 456, 123, 789"])
+
+        article_ids = cli._load_article_ids(args)
+
+        self.assertEqual(article_ids, ["123", "456"])
 
     def test_display_data_source_for_articles_is_api(self):
         CONFIG["data_source"] = "html"

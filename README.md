@@ -75,6 +75,11 @@ copy .env.example .env
 ```
 
 Для режима `--articles` парсер сначала запрашивает данные стандартным API-запросом, а если часть артикулов не вернулась, повторяет только недостающие товары без фасетов текущей категории и без `filterByEligibility`. Если API всё равно не отдаёт товар, строка остаётся в Excel со статусом `api_data_missing`.
+Для A/B теста можно запустить список артикулов сразу в relaxed-режиме:
+
+```bat
+.\run_win.bat --articles-file articles.txt --api-articles-mode relaxed --api-page-size 100 --api-articles-sleep 3 --max-articles 100
+```
 
 Полезные параметры:
 
@@ -83,7 +88,10 @@ copy .env.example .env
 - `--max-products` — ограничение количества товаров.
 - `--data-source html|api|api-fallback` — источник данных. `api-fallback` сначала пробует API, затем текущий HTML-режим.
 - `--articles` и `--articles-file` — выгрузка по списку артикулов ЛМ через API.
+- `--max-articles` — ограничение количества артикулов после чтения файла и удаления дублей.
+- `--api-page-size` — размер API-батча.
 - `--api-articles-sleep` — пауза между API-батчами в режиме списка артикулов.
+- `--api-articles-mode strict-then-relaxed|relaxed` — обычный режим с повтором только недостающих товаров или прямой relaxed-запрос.
 - `--profile stable|careful|fast` — готовый профиль загрузки карточек.
 - `--catalog-concurrency` и `--product-concurrency` — верхняя параллельность запросов.
 - `--product-batch-sleep` — пауза между батчами карточек.

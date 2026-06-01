@@ -39,15 +39,23 @@ async def _load_products_batch(
     *,
     sort_id: str | None = None,
     relaxed_missing_retry: bool = False,
+    articles_mode: str = "strict-then-relaxed",
 ) -> list[Product]:
-    products_data = await client.get_products_data(product_ids, sort_id=sort_id)
+    if relaxed_missing_retry and articles_mode == "relaxed":
+        products_data = await client.get_products_data(
+            product_ids,
+            include_facets=False,
+            filter_by_eligibility=False,
+        )
+    else:
+        products_data = await client.get_products_data(product_ids, sort_id=sort_id)
     products_data_by_id = {str(item.get("productId")): item for item in products_data}
 
     if relaxed_missing_retry:
         missing_ids = [
             product_id for product_id in product_ids if product_id not in products_data_by_id
         ]
-        if missing_ids:
+        if missing_ids and articles_mode == "strict-then-relaxed":
             logger.info(
                 "API по артикулам: %d товаров не вернулись в строгом запросе, "
                 "повторяем без фасетов и eligibility",
@@ -66,10 +74,16 @@ async def _load_products_batch(
             product_id for product_id in product_ids if product_id not in products_data_by_id
         ]
         if missing_ids:
+            request_mode_label = (
+                "relaxed-запроса"
+                if articles_mode == "relaxed"
+                else "relaxed retry"
+            )
             logger.info(
-                "API по артикулам: %d товаров не вернулись после relaxed retry, "
+                "API по артикулам: %d товаров не вернулись после %s, "
                 "оставляем api_data_missing",
                 len(missing_ids),
+                request_mode_label,
             )
 
     try:
@@ -125,7 +139,12 @@ async def fetch_products_by_articles_api(
 
     batches = list(chunked(clean_ids, CONFIG["api_page_size"]))
     for batch_index, product_ids in enumerate(batches, start=1):
-        batch = await _load_products_batch(client, product_ids, relaxed_missing_retry=True)
+        batch = await _load_products_batch(
+            client,
+            product_ids,
+            relaxed_missing_retry=True,
+            articles_mode=CONFIG["api_articles_mode"],
+        )
         for product in batch:
             char_keys.update(product.get("characteristics") or {})
         products.extend(batch)
