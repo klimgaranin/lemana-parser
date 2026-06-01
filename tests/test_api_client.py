@@ -1,10 +1,8 @@
 import unittest
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
 
 from lemana_parser.api.client import LemanaApiClient
 from lemana_parser.api.state import PlpApiContext
-from lemana_parser.config import CONFIG
 
 
 class ApiClientTests(unittest.TestCase):
@@ -59,35 +57,6 @@ class ApiClientTests(unittest.TestCase):
         self.assertFalse(self.last_payload["filterByEligibility"])
         self.assertNotIn("facets", self.last_payload)
         self.assertNotIn("regionId", self.last_payload)
-
-    def test_post_retries_api_pressure_status(self):
-        class RetrySession:
-            def __init__(self):
-                self.calls = 0
-
-            async def post(self, *args, **kwargs):
-                self.calls += 1
-                if self.calls == 1:
-                    return SimpleNamespace(status_code=403, json=lambda: {})
-                return SimpleNamespace(status_code=200, json=lambda: {"content": []})
-
-        session = RetrySession()
-        client = self._client(session=session)
-        old_retries = CONFIG["api_max_retries"]
-        old_cooldown = CONFIG["api_antibot_cooldown"]
-        CONFIG["api_max_retries"] = 2
-        CONFIG["api_antibot_cooldown"] = 0
-        try:
-            import asyncio
-
-            with patch("lemana_parser.api.client.asyncio.sleep", new=AsyncMock()):
-                result = asyncio.run(client.get_products_data(["111"]))
-        finally:
-            CONFIG["api_max_retries"] = old_retries
-            CONFIG["api_antibot_cooldown"] = old_cooldown
-
-        self.assertEqual(result, [])
-        self.assertEqual(session.calls, 2)
 
 
 if __name__ == "__main__":

@@ -1,7 +1,6 @@
 import unittest
-from unittest.mock import AsyncMock, patch
 
-from lemana_parser.api.catalog_api import _load_articles_batch_resilient, _load_products_batch
+from lemana_parser.api.catalog_api import _load_products_batch
 from lemana_parser.api.client import LemanaApiError
 
 
@@ -68,37 +67,6 @@ class FakeRelaxedClient(FakeApiClient):
         ]
 
 
-class FakePressureClient(FakeApiClient):
-    def __init__(self):
-        self.calls = []
-
-    async def get_products_data(
-        self,
-        product_ids,
-        *,
-        sort_id=None,
-        include_facets=True,
-        filter_by_eligibility=True,
-        include_region=True,
-    ):
-        self.calls.append(list(product_ids))
-        if len(product_ids) > 1:
-            raise LemanaApiError(
-                "products-data:search: HTTP 403",
-                method="products-data:search",
-                status_code=403,
-            )
-        return [
-            {
-                "productId": product_ids[0],
-                "displayedName": f"Товар {product_ids[0]}",
-                "productLink": f"/product/test-{product_ids[0]}/",
-                "price": {"main_price": 99},
-                "characteristics": [],
-            }
-        ]
-
-
 class ApiCatalogTests(unittest.IsolatedAsyncioTestCase):
     async def test_load_products_batch_marks_missing_product_data(self):
         products = await _load_products_batch(FakeApiClient(), ["111", "222"])
@@ -125,15 +93,6 @@ class ApiCatalogTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(client.calls[1]["include_facets"])
         self.assertFalse(client.calls[1]["filter_by_eligibility"])
         self.assertTrue(client.calls[1]["include_region"])
-
-    async def test_article_batch_splits_after_api_pressure_error(self):
-        client = FakePressureClient()
-
-        with patch("lemana_parser.api.catalog_api.asyncio.sleep", new=AsyncMock()):
-            products = await _load_articles_batch_resilient(client, ["111", "222"])
-
-        self.assertEqual([product["status"] for product in products], ["ok", "ok"])
-        self.assertEqual(client.calls, [["111", "222"], ["111"], ["222"]])
 
 
 if __name__ == "__main__":

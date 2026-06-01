@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 
 from curl_cffi.requests import AsyncSession
@@ -15,22 +14,6 @@ from lemana_parser.http_utils import fetch_with_retry
 from lemana_parser.models import Product
 
 logger = logging.getLogger("api.catalog")
-
-
-def _api_failed_products(product_ids: list[str], exc: LemanaApiError) -> list[Product]:
-    return [
-        {
-            "status": "api_request_failed",
-            "error": str(exc),
-            "article": product_id,
-            "url": "",
-            "name": "",
-            "price": "",
-            "image": "",
-            "characteristics": {},
-        }
-        for product_id in product_ids
-    ]
 
 
 async def load_api_context(session: AsyncSession):
@@ -138,45 +121,6 @@ async def _load_products_batch(
     return result
 
 
-async def _load_articles_batch_resilient(
-    client: LemanaApiClient,
-    product_ids: list[str],
-    *,
-    depth: int = 0,
-) -> list[Product]:
-    try:
-        return await _load_products_batch(client, product_ids, relaxed_missing_retry=True)
-    except LemanaApiError as exc:
-        if exc.is_pressure_status and len(product_ids) > 1:
-            mid = len(product_ids) // 2
-            left = product_ids[:mid]
-            right = product_ids[mid:]
-            logger.warning(
-                "API по артикулам: batch=%d получил %s, делим на %d + %d",
-                len(product_ids),
-                exc,
-                len(left),
-                len(right),
-            )
-            await asyncio.sleep(CONFIG["api_antibot_cooldown"])
-            left_products = await _load_articles_batch_resilient(
-                client, left, depth=depth + 1
-            )
-            if CONFIG["api_request_sleep"]:
-                await asyncio.sleep(CONFIG["api_request_sleep"])
-            right_products = await _load_articles_batch_resilient(
-                client, right, depth=depth + 1
-            )
-            return left_products + right_products
-
-        logger.warning(
-            "API по артикулам: batch=%d не загрузился, строки будут в Excel со статусом ошибки: %s",
-            len(product_ids),
-            exc,
-        )
-        return _api_failed_products(product_ids, exc)
-
-
 async def fetch_products_by_articles_api(
     session: AsyncSession,
     article_ids: list[str],
@@ -194,25 +138,11 @@ async def fetch_products_by_articles_api(
             seen.add(article)
             clean_ids.append(article)
 
-    from tqdm import tqdm
-
-    batch_size = CONFIG["api_article_batch_size"]
-    with tqdm(total=len(clean_ids), desc="API артикулы", unit="шт") as pbar:
-        for product_ids in chunked(clean_ids, batch_size):
-            batch = await _load_articles_batch_resilient(client, product_ids)
-            for product in batch:
-                char_keys.update(product.get("characteristics") or {})
-            products.extend(batch)
-            pbar.update(len(batch))
-            pbar.set_postfix(
-                {
-                    "batch": len(product_ids),
-                    "ok": sum(1 for product in products if product.get("status") == "ok"),
-                    "err": sum(1 for product in products if product.get("status") != "ok"),
-                }
-            )
-            if CONFIG["api_request_sleep"] and len(products) < len(clean_ids):
-                await asyncio.sleep(CONFIG["api_request_sleep"])
+    for product_ids in chunked(clean_ids, CONFIG["api_page_size"]):
+        batch = await _load_products_batch(client, product_ids, relaxed_missing_retry=True)
+        for product in batch:
+            char_keys.update(product.get("characteristics") or {})
+        products.extend(batch)
 
     missed = [
         article for article in clean_ids if article not in {p.get("article") for p in products}

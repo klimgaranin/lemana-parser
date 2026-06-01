@@ -112,26 +112,6 @@ def _parse_args(argv=None) -> argparse.Namespace:
         help="Файл со списком артикулов ЛМ. Можно разделять запятыми, пробелами или строками.",
     )
     parser.add_argument(
-        "--api-article-batch-size",
-        type=int,
-        help="Размер API-батча для выгрузки по артикулам ЛМ",
-    )
-    parser.add_argument(
-        "--api-request-sleep",
-        type=float,
-        help="Пауза между API-батчами по артикулам, сек",
-    )
-    parser.add_argument(
-        "--api-max-retries",
-        type=int,
-        help="Количество повторов API-запроса при 403/429/5xx",
-    )
-    parser.add_argument(
-        "--api-antibot-cooldown",
-        type=float,
-        help="Пауза перед повтором API после 403/429, сек",
-    )
-    parser.add_argument(
         "--profile",
         choices=sorted(PRODUCT_PROFILES),
         help="Профиль загрузки карточек: stable, careful или fast",
@@ -218,10 +198,6 @@ def _apply_cli_overrides(args: argparse.Namespace) -> None:
         product_pressure_cooldown=args.product_pressure_cooldown,
         product_deferred_rounds=args.product_deferred_rounds,
         product_deferred_sleep=args.product_deferred_sleep,
-        api_article_batch_size=args.api_article_batch_size,
-        api_request_sleep=args.api_request_sleep,
-        api_max_retries=args.api_max_retries,
-        api_antibot_cooldown=args.api_antibot_cooldown,
         browser_impersonate=args.browser_impersonate,
         cookie=args.cookie.strip().strip("\"'") if args.cookie else None,
     )
@@ -418,13 +394,6 @@ def main(argv=None) -> int:
     print(f"   Данные : {_display_data_source(article_ids)}")
     if article_ids:
         print(f"   Артикулы: {len(article_ids)} шт")
-        print(
-            "   API batch: "
-            f"{CONFIG['api_article_batch_size']} шт, "
-            f"sleep={CONFIG['api_request_sleep']:.1f}s, "
-            f"retry={CONFIG['api_max_retries']}, "
-            f"cooldown={CONFIG['api_antibot_cooldown']:.1f}s"
-        )
     if args.profile:
         print(f"   Профиль: {args.profile}")
     print(

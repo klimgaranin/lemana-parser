@@ -108,10 +108,6 @@ CONFIG: Config = {
     "cookie_auto_refresh": _env_bool("LEMANA_COOKIE_AUTO_REFRESH", True),
     # ── API сайта ───────────────────────────────────────────────────────────
     "api_page_size": _env_int("LEMANA_API_PAGE_SIZE", 60),
-    "api_article_batch_size": _env_int("LEMANA_API_ARTICLE_BATCH_SIZE", 30),
-    "api_request_sleep": _env_float("LEMANA_API_REQUEST_SLEEP", 0.6),
-    "api_max_retries": _env_int("LEMANA_API_MAX_RETRIES", 3),
-    "api_antibot_cooldown": _env_float("LEMANA_API_ANTIBOT_COOLDOWN", 15.0),
     "api_region_name": _env_str("LEMANA_API_REGION_NAME", "Москва, Московская область"),
     # ── Cookie (Playwright заполняет автоматически) ──────────────────────────
     "cookie": os.getenv("LEMANA_COOKIE", "").strip().strip("\"'"),
@@ -155,8 +151,6 @@ def validate_config(config: Config = CONFIG) -> None:
         "product_timeout",
         "max_retries",
         "api_page_size",
-        "api_article_batch_size",
-        "api_max_retries",
     ]
     for key in positive_int_keys:
         if config[key] < 1:
@@ -193,15 +187,6 @@ def validate_config(config: Config = CONFIG) -> None:
 
     if config["api_page_size"] < 1 or config["api_page_size"] > 60:
         raise ConfigError("LEMANA_API_PAGE_SIZE должен быть от 1 до 60")
-
-    if config["api_article_batch_size"] < 1 or config["api_article_batch_size"] > 60:
-        raise ConfigError("LEMANA_API_ARTICLE_BATCH_SIZE должен быть от 1 до 60")
-
-    if config["api_request_sleep"] < 0:
-        raise ConfigError("LEMANA_API_REQUEST_SLEEP должен быть >= 0")
-
-    if config["api_antibot_cooldown"] < 0:
-        raise ConfigError("LEMANA_API_ANTIBOT_COOLDOWN должен быть >= 0")
 
     if config["min_sleep_ms"] < 0 or config["max_sleep_ms"] < 0:
         raise ConfigError("LEMANA_MIN_SLEEP_MS и LEMANA_MAX_SLEEP_MS должны быть >= 0")
