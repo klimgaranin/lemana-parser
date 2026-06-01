@@ -67,26 +67,10 @@ async def _load_products_batch(
         ]
         if missing_ids:
             logger.info(
-                "API по артикулам: %d товаров всё ещё без данных, повторяем без regionId",
+                "API по артикулам: %d товаров не вернулись после relaxed retry, "
+                "оставляем api_data_missing",
                 len(missing_ids),
             )
-            try:
-                global_data = await client.get_products_data(
-                    missing_ids,
-                    include_facets=False,
-                    filter_by_eligibility=False,
-                    include_region=False,
-                )
-            except LemanaApiError as exc:
-                logger.warning("API без regionId не сработал: %s", exc)
-            else:
-                products_data_by_id.update(
-                    {
-                        str(item.get("productId")): item
-                        for item in global_data
-                        if item.get("productId")
-                    }
-                )
 
     try:
         media_map = await client.get_products_media(product_ids)

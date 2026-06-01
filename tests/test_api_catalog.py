@@ -69,6 +69,27 @@ class FakeRelaxedClient(FakeApiClient):
         ]
 
 
+class FakeAlwaysMissingClient(FakeRelaxedClient):
+    async def get_products_data(
+        self,
+        product_ids,
+        *,
+        sort_id=None,
+        include_facets=True,
+        filter_by_eligibility=True,
+        include_region=True,
+    ):
+        self.calls.append(
+            {
+                "product_ids": product_ids,
+                "include_facets": include_facets,
+                "filter_by_eligibility": filter_by_eligibility,
+                "include_region": include_region,
+            }
+        )
+        return []
+
+
 class ApiCatalogTests(unittest.IsolatedAsyncioTestCase):
     async def test_load_products_batch_marks_missing_product_data(self):
         products = await _load_products_batch(FakeApiClient(), ["111", "222"])
@@ -95,6 +116,15 @@ class ApiCatalogTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(client.calls[1]["include_facets"])
         self.assertFalse(client.calls[1]["filter_by_eligibility"])
         self.assertTrue(client.calls[1]["include_region"])
+
+    async def test_relaxed_retry_does_not_repeat_without_region(self):
+        client = FakeAlwaysMissingClient()
+
+        products = await _load_products_batch(client, ["111"], relaxed_missing_retry=True)
+
+        self.assertEqual(products[0]["status"], "api_data_missing")
+        self.assertEqual(len(client.calls), 2)
+        self.assertTrue(all(call["include_region"] for call in client.calls))
 
     async def test_articles_api_sleep_runs_between_batches_only(self):
         old_page_size = CONFIG["api_page_size"]
