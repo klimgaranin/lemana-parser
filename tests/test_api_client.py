@@ -58,6 +58,26 @@ class ApiClientTests(unittest.TestCase):
         self.assertNotIn("facets", self.last_payload)
         self.assertNotIn("regionId", self.last_payload)
 
+    def test_error_includes_response_content_type_and_body(self):
+        async def fake_post(url, *, params=None, json=None, headers=None, timeout=None):
+            return SimpleNamespace(
+                status_code=400,
+                headers={"content-type": "application/json"},
+                text='{"message":"regionId is required"}',
+                json=lambda: {},
+            )
+
+        session = SimpleNamespace(post=fake_post)
+        client = self._client(session=session)
+
+        import asyncio
+
+        with self.assertRaisesRegex(
+            Exception,
+            r"products-data:search: HTTP 400.*content-type=application/json.*regionId",
+        ):
+            asyncio.run(client.get_products_data(["111"], include_region=False))
+
 
 if __name__ == "__main__":
     unittest.main()

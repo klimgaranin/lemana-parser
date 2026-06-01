@@ -17,6 +17,30 @@ class LemanaApiError(RuntimeError):
     """API lemanapro.ru вернул ошибку или неожиданный ответ."""
 
 
+def _response_text(response) -> str:
+    text = getattr(response, "text", "")
+    if callable(text):
+        try:
+            text = text()
+        except Exception:
+            text = ""
+    if isinstance(text, bytes):
+        return text.decode("utf-8", errors="replace")
+    return str(text or "")
+
+
+def _response_content_type(response) -> str:
+    headers = getattr(response, "headers", {}) or {}
+    return str(headers.get("content-type") or headers.get("Content-Type") or "")
+
+
+def _trim_response_body(body: str, limit: int = 1000) -> str:
+    body = " ".join((body or "").split())
+    if len(body) <= limit:
+        return body
+    return body[:limit] + f"... <обрезано {len(body) - limit} символов>"
+
+
 def chunked(items: list[str], size: int) -> Iterable[list[str]]:
     for start in range(0, len(items), size):
         yield items[start : start + size]
@@ -61,7 +85,14 @@ class LemanaApiClient:
             timeout=CONFIG["catalog_timeout"],
         )
         if response.status_code >= 400:
-            raise LemanaApiError(f"{method}: HTTP {response.status_code}")
+            content_type = _response_content_type(response)
+            body = _trim_response_body(_response_text(response))
+            details = f"{method}: HTTP {response.status_code}"
+            if content_type:
+                details += f", content-type={content_type}"
+            if body:
+                details += f", body={body}"
+            raise LemanaApiError(details)
         try:
             data = response.json()
         except Exception as exc:
