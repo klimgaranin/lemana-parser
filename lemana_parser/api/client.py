@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Iterable
 
@@ -15,6 +16,23 @@ logger = logging.getLogger("api.client")
 
 class LemanaApiError(RuntimeError):
     """API lemanapro.ru вернул ошибку или неожиданный ответ."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        method: str | None = None,
+        status_code: int | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.method = method
+        self.status_code = status_code
+
+    @property
+    def is_pressure_status(self) -> bool:
+        return self.status_code in {403, 429} or (
+            self.status_code is not None and self.status_code >= 500
+        )
 
 
 def chunked(items: list[str], size: int) -> Iterable[list[str]]:
@@ -53,21 +71,56 @@ class LemanaApiClient:
         if query:
             params.update(query)
 
-        response = await self.session.post(
-            url,
-            params=params,
-            json=payload,
-            headers=self._headers(),
-            timeout=CONFIG["catalog_timeout"],
-        )
-        if response.status_code >= 400:
-            raise LemanaApiError(f"{method}: HTTP {response.status_code}")
+        last_status: int | None = None
+        for attempt in range(1, CONFIG["api_max_retries"] + 1):
+            response = await self.session.post(
+                url,
+                params=params,
+                json=payload,
+                headers=self._headers(),
+                timeout=CONFIG["catalog_timeout"],
+            )
+            last_status = response.status_code
+            if response.status_code < 400:
+                break
+
+            can_retry = response.status_code in {403, 429} or response.status_code >= 500
+            if not can_retry or attempt >= CONFIG["api_max_retries"]:
+                raise LemanaApiError(
+                    f"{method}: HTTP {response.status_code}",
+                    method=method,
+                    status_code=response.status_code,
+                )
+
+            if response.status_code in {403, 429}:
+                delay = CONFIG["api_antibot_cooldown"]
+            else:
+                delay = CONFIG["retry_backoff"] * attempt
+            logger.warning(
+                "%s: HTTP %s, повтор API через %.1f сек (attempt=%d/%d)",
+                method,
+                response.status_code,
+                delay,
+                attempt,
+                CONFIG["api_max_retries"],
+            )
+            await asyncio.sleep(delay)
+        else:
+            raise LemanaApiError(
+                f"{method}: HTTP {last_status}",
+                method=method,
+                status_code=last_status,
+            )
+
         try:
             data = response.json()
         except Exception as exc:
-            raise LemanaApiError(f"{method}: ответ не JSON") from exc
+            raise LemanaApiError(f"{method}: ответ не JSON", method=method) from exc
         if not isinstance(data, dict):
-            raise LemanaApiError(f"{method}: ожидался JSON object, получен {type(data).__name__}")
+            raise LemanaApiError(
+                f"{method}: ожидался JSON object, получен {type(data).__name__}",
+                method=method,
+            )
         return data
 
     def _search_payload(self, *, offset: int, sort_id: str | None = None) -> dict:

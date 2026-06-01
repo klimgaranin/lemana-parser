@@ -33,6 +33,10 @@ def _valid_config(**overrides):
             "browser_impersonate": "chrome",
             "data_source": "html",
             "api_page_size": 60,
+            "api_article_batch_size": 30,
+            "api_request_sleep": 0,
+            "api_max_retries": 3,
+            "api_antibot_cooldown": 15,
             "api_region_name": "Москва, Московская область",
         }
     )
@@ -79,6 +83,14 @@ class ConfigValidationTests(unittest.TestCase):
     def test_rejects_invalid_api_page_size(self):
         with self.assertRaisesRegex(ConfigError, "API_PAGE_SIZE"):
             validate_config(_valid_config(api_page_size=100))
+
+    def test_rejects_invalid_api_article_batch_size(self):
+        with self.assertRaisesRegex(ConfigError, "API_ARTICLE_BATCH_SIZE"):
+            validate_config(_valid_config(api_article_batch_size=100))
+
+    def test_rejects_negative_api_cooldown(self):
+        with self.assertRaisesRegex(ConfigError, "API_ANTIBOT_COOLDOWN"):
+            validate_config(_valid_config(api_antibot_cooldown=-1))
 
 
 if __name__ == "__main__":
