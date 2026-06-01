@@ -3,7 +3,6 @@ __pycache__/
 *.pyc
 .env
 output/
-logs/
 parser.log
 *.log
 *.Zone.Identifier

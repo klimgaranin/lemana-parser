@@ -89,29 +89,6 @@ class ApiClientTests(unittest.TestCase):
         self.assertEqual(result, [])
         self.assertEqual(session.calls, 2)
 
-    def test_api_debug_log_redacts_sensitive_headers(self):
-        session = SimpleNamespace(post=self._fake_post)
-        client = self._client(session=session)
-
-        import asyncio
-
-        events = []
-        old_enabled = CONFIG["api_debug_log_enabled"]
-        CONFIG["api_debug_log_enabled"] = True
-        try:
-            with patch(
-                "lemana_parser.api.debug_log.write_api_debug_event",
-                side_effect=events.append,
-            ):
-                asyncio.run(client.get_products_data(["111"]))
-        finally:
-            CONFIG["api_debug_log_enabled"] = old_enabled
-
-        request_event = next(event for event in events if event["event"] == "request")
-        self.assertEqual(request_event["headers"]["x-api-key"], "***redacted***")
-        self.assertEqual(request_event["product_ids_count"], 1)
-        self.assertEqual(request_event["payload"]["productIds"], ["111"])
-
 
 if __name__ == "__main__":
     unittest.main()

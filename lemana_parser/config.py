@@ -112,11 +112,6 @@ CONFIG: Config = {
     "api_request_sleep": _env_float("LEMANA_API_REQUEST_SLEEP", 0.6),
     "api_max_retries": _env_int("LEMANA_API_MAX_RETRIES", 3),
     "api_antibot_cooldown": _env_float("LEMANA_API_ANTIBOT_COOLDOWN", 15.0),
-    "api_debug_log_enabled": _env_bool("LEMANA_API_DEBUG_LOG_ENABLED", True),
-    "api_debug_log_dir": _env_str("LEMANA_API_DEBUG_LOG_DIR", "logs/api_debug"),
-    "api_debug_log_retention_days": _env_int("LEMANA_API_DEBUG_LOG_RETENTION_DAYS", 7),
-    "api_debug_log_body_limit": _env_int("LEMANA_API_DEBUG_LOG_BODY_LIMIT", 8000),
-    "api_debug_log_success_body": _env_bool("LEMANA_API_DEBUG_LOG_SUCCESS_BODY", False),
     "api_region_name": _env_str("LEMANA_API_REGION_NAME", "Москва, Московская область"),
     # ── Cookie (Playwright заполняет автоматически) ──────────────────────────
     "cookie": os.getenv("LEMANA_COOKIE", "").strip().strip("\"'"),
@@ -162,8 +157,6 @@ def validate_config(config: Config = CONFIG) -> None:
         "api_page_size",
         "api_article_batch_size",
         "api_max_retries",
-        "api_debug_log_retention_days",
-        "api_debug_log_body_limit",
     ]
     for key in positive_int_keys:
         if config[key] < 1:
@@ -209,12 +202,6 @@ def validate_config(config: Config = CONFIG) -> None:
 
     if config["api_antibot_cooldown"] < 0:
         raise ConfigError("LEMANA_API_ANTIBOT_COOLDOWN должен быть >= 0")
-
-    if config["api_debug_log_body_limit"] < 100:
-        raise ConfigError("LEMANA_API_DEBUG_LOG_BODY_LIMIT должен быть >= 100")
-
-    if not config["api_debug_log_dir"].strip():
-        raise ConfigError("LEMANA_API_DEBUG_LOG_DIR не должен быть пустым")
 
     if config["min_sleep_ms"] < 0 or config["max_sleep_ms"] < 0:
         raise ConfigError("LEMANA_MIN_SLEEP_MS и LEMANA_MAX_SLEEP_MS должны быть >= 0")
