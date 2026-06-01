@@ -33,6 +33,7 @@ def _valid_config(**overrides):
             "browser_impersonate": "chrome",
             "data_source": "html",
             "api_page_size": 60,
+            "api_articles_sleep": 0,
             "api_region_name": "Москва, Московская область",
         }
     )
@@ -79,6 +80,10 @@ class ConfigValidationTests(unittest.TestCase):
     def test_rejects_invalid_api_page_size(self):
         with self.assertRaisesRegex(ConfigError, "API_PAGE_SIZE"):
             validate_config(_valid_config(api_page_size=100))
+
+    def test_rejects_negative_api_articles_sleep(self):
+        with self.assertRaisesRegex(ConfigError, "API_ARTICLES_SLEEP"):
+            validate_config(_valid_config(api_articles_sleep=-1))
 
 
 if __name__ == "__main__":

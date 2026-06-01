@@ -1,7 +1,9 @@
 import unittest
+from unittest.mock import AsyncMock, patch
 
-from lemana_parser.api.catalog_api import _load_products_batch
+from lemana_parser.api.catalog_api import _load_products_batch, fetch_products_by_articles_api
 from lemana_parser.api.client import LemanaApiError
+from lemana_parser.config import CONFIG
 
 
 class FakeApiClient:
@@ -93,6 +95,28 @@ class ApiCatalogTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(client.calls[1]["include_facets"])
         self.assertFalse(client.calls[1]["filter_by_eligibility"])
         self.assertTrue(client.calls[1]["include_region"])
+
+    async def test_articles_api_sleep_runs_between_batches_only(self):
+        old_page_size = CONFIG["api_page_size"]
+        old_sleep = CONFIG["api_articles_sleep"]
+        CONFIG["api_page_size"] = 1
+        CONFIG["api_articles_sleep"] = 3
+        try:
+            with (
+                patch("lemana_parser.api.catalog_api.load_api_context", return_value=object()),
+                patch(
+                    "lemana_parser.api.catalog_api.LemanaApiClient",
+                    return_value=FakeApiClient(),
+                ),
+                patch("lemana_parser.api.catalog_api.asyncio.sleep", new=AsyncMock()) as sleep_mock,
+            ):
+                products, _ = await fetch_products_by_articles_api(object(), ["111", "222"])
+        finally:
+            CONFIG["api_page_size"] = old_page_size
+            CONFIG["api_articles_sleep"] = old_sleep
+
+        self.assertEqual(len(products), 2)
+        sleep_mock.assert_awaited_once_with(3)
 
 
 if __name__ == "__main__":

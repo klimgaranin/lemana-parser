@@ -49,6 +49,8 @@ class CliTests(unittest.TestCase):
                     "7",
                     "--product-concurrency",
                     "2",
+                    "--api-articles-sleep",
+                    "3",
                     "--data-source",
                     "api-fallback",
                 ]
@@ -58,6 +60,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(CONFIG["cookie"], "test_cookie")
         self.assertEqual(CONFIG["max_products"], 7)
         self.assertEqual(CONFIG["product_concurrency"], 2)
+        self.assertEqual(CONFIG["api_articles_sleep"], 3.0)
         self.assertEqual(CONFIG["data_source"], "api-fallback")
 
     def test_parse_article_ids_accepts_common_separators(self):

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from curl_cffi.requests import AsyncSession
@@ -138,11 +139,20 @@ async def fetch_products_by_articles_api(
             seen.add(article)
             clean_ids.append(article)
 
-    for product_ids in chunked(clean_ids, CONFIG["api_page_size"]):
+    batches = list(chunked(clean_ids, CONFIG["api_page_size"]))
+    for batch_index, product_ids in enumerate(batches, start=1):
         batch = await _load_products_batch(client, product_ids, relaxed_missing_retry=True)
         for product in batch:
             char_keys.update(product.get("characteristics") or {})
         products.extend(batch)
+        if CONFIG["api_articles_sleep"] > 0 and batch_index < len(batches):
+            logger.info(
+                "API по артикулам: пауза %.1f сек после batch %d/%d",
+                CONFIG["api_articles_sleep"],
+                batch_index,
+                len(batches),
+            )
+            await asyncio.sleep(CONFIG["api_articles_sleep"])
 
     missed = [
         article for article in clean_ids if article not in {p.get("article") for p in products}

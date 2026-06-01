@@ -112,6 +112,11 @@ def _parse_args(argv=None) -> argparse.Namespace:
         help="Файл со списком артикулов ЛМ. Можно разделять запятыми, пробелами или строками.",
     )
     parser.add_argument(
+        "--api-articles-sleep",
+        type=float,
+        help="Пауза между API-батчами в режиме --articles/--articles-file, сек",
+    )
+    parser.add_argument(
         "--profile",
         choices=sorted(PRODUCT_PROFILES),
         help="Профиль загрузки карточек: stable, careful или fast",
@@ -198,6 +203,7 @@ def _apply_cli_overrides(args: argparse.Namespace) -> None:
         product_pressure_cooldown=args.product_pressure_cooldown,
         product_deferred_rounds=args.product_deferred_rounds,
         product_deferred_sleep=args.product_deferred_sleep,
+        api_articles_sleep=args.api_articles_sleep,
         browser_impersonate=args.browser_impersonate,
         cookie=args.cookie.strip().strip("\"'") if args.cookie else None,
     )
@@ -394,6 +400,11 @@ def main(argv=None) -> int:
     print(f"   Данные : {_display_data_source(article_ids)}")
     if article_ids:
         print(f"   Артикулы: {len(article_ids)} шт")
+        print(
+            "   API batch: "
+            f"{CONFIG['api_page_size']} шт, "
+            f"sleep={CONFIG['api_articles_sleep']:.1f}s"
+        )
     if args.profile:
         print(f"   Профиль: {args.profile}")
     print(

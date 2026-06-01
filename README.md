@@ -83,6 +83,7 @@ copy .env.example .env
 - `--max-products` — ограничение количества товаров.
 - `--data-source html|api|api-fallback` — источник данных. `api-fallback` сначала пробует API, затем текущий HTML-режим.
 - `--articles` и `--articles-file` — выгрузка по списку артикулов ЛМ через API.
+- `--api-articles-sleep` — пауза между API-батчами в режиме списка артикулов.
 - `--profile stable|careful|fast` — готовый профиль загрузки карточек.
 - `--catalog-concurrency` и `--product-concurrency` — верхняя параллельность запросов.
 - `--product-batch-sleep` — пауза между батчами карточек.
