@@ -37,8 +37,56 @@ async def _load_products_batch(
     product_ids: list[str],
     *,
     sort_id: str | None = None,
+    relaxed_missing_retry: bool = False,
 ) -> list[Product]:
     products_data = await client.get_products_data(product_ids, sort_id=sort_id)
+    products_data_by_id = {str(item.get("productId")): item for item in products_data}
+
+    if relaxed_missing_retry:
+        missing_ids = [
+            product_id for product_id in product_ids if product_id not in products_data_by_id
+        ]
+        if missing_ids:
+            logger.info(
+                "API по артикулам: %d товаров не вернулись в строгом запросе, "
+                "повторяем без фасетов и eligibility",
+                len(missing_ids),
+            )
+            relaxed_data = await client.get_products_data(
+                missing_ids,
+                include_facets=False,
+                filter_by_eligibility=False,
+            )
+            products_data_by_id.update(
+                {str(item.get("productId")): item for item in relaxed_data if item.get("productId")}
+            )
+
+        missing_ids = [
+            product_id for product_id in product_ids if product_id not in products_data_by_id
+        ]
+        if missing_ids:
+            logger.info(
+                "API по артикулам: %d товаров всё ещё без данных, повторяем без regionId",
+                len(missing_ids),
+            )
+            try:
+                global_data = await client.get_products_data(
+                    missing_ids,
+                    include_facets=False,
+                    filter_by_eligibility=False,
+                    include_region=False,
+                )
+            except LemanaApiError as exc:
+                logger.warning("API без regionId не сработал: %s", exc)
+            else:
+                products_data_by_id.update(
+                    {
+                        str(item.get("productId")): item
+                        for item in global_data
+                        if item.get("productId")
+                    }
+                )
+
     try:
         media_map = await client.get_products_media(product_ids)
     except LemanaApiError as exc:
@@ -50,7 +98,7 @@ async def _load_products_batch(
             product_data,
             media_map.get(str(product_data.get("productId"))),
         )
-        for product_data in products_data
+        for product_data in products_data_by_id.values()
     }
     result: list[Product] = []
     for product_id in product_ids:
@@ -91,7 +139,7 @@ async def fetch_products_by_articles_api(
             clean_ids.append(article)
 
     for product_ids in chunked(clean_ids, CONFIG["api_page_size"]):
-        batch = await _load_products_batch(client, product_ids)
+        batch = await _load_products_batch(client, product_ids, relaxed_missing_retry=True)
         for product in batch:
             char_keys.update(product.get("characteristics") or {})
         products.extend(batch)
@@ -113,9 +161,9 @@ async def fetch_products_by_articles_api(
             }
         )
 
-    logger.info(
-        "API по артикулам: найдено=%d, не найдено=%d", len(products) - len(missed), len(missed)
-    )
+    ok_count = sum(1 for product in products if product.get("status") == "ok")
+    error_count = len(products) - ok_count
+    logger.info("API по артикулам: успешно=%d, ошибок=%d", ok_count, error_count)
     return products, sorted(char_keys)
 
 

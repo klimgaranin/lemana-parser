@@ -89,23 +89,38 @@ class LemanaApiClient:
             payload["sortId"] = sort_id
         return payload
 
-    async def search_product_ids(self, *, offset: int, sort_id: str | None = None) -> tuple[list[str], int]:
-        data = await self._post("products:search", self._search_payload(offset=offset, sort_id=sort_id))
+    async def search_product_ids(
+        self, *, offset: int, sort_id: str | None = None
+    ) -> tuple[list[str], int]:
+        data = await self._post(
+            "products:search", self._search_payload(offset=offset, sort_id=sort_id)
+        )
         product_ids = [str(product_id) for product_id in data.get("content") or []]
         total_count = int(data.get("totalCount") or 0)
         return product_ids, total_count
 
-    async def get_products_data(self, product_ids: list[str], *, sort_id: str | None = None) -> list[dict]:
+    async def get_products_data(
+        self,
+        product_ids: list[str],
+        *,
+        sort_id: str | None = None,
+        include_facets: bool = True,
+        filter_by_eligibility: bool = True,
+        include_region: bool = True,
+    ) -> list[dict]:
         if not product_ids:
             return []
         payload = {
-            "regionId": self.context.region_id,
             "productIds": product_ids,
-            "filterByEligibility": True,
-            "facets": self.context.facets,
-            "sortId": sort_id,
+            "filterByEligibility": filter_by_eligibility,
             "deliveryDate": False,
         }
+        if include_region:
+            payload["regionId"] = self.context.region_id
+        if include_facets:
+            payload["facets"] = self.context.facets
+        if sort_id:
+            payload["sortId"] = sort_id
         data = await self._post("products-data:search", payload)
         content = data.get("content") or []
         if not isinstance(content, list):
