@@ -16,3 +16,4 @@ chrome_cdp_session/
 .chrome_cdp_session/
 .chrome_cdp_profile/
 лемана.json
+gas/**/.clasp.json
