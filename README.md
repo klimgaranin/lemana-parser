@@ -42,12 +42,31 @@ copy .env.example .env
 
 Скрипт создаёт `.venv`, устанавливает зависимости из `requirements.txt` и Chromium для Playwright. Проект можно хранить в Git, выгрузить на любой Windows-компьютер, запустить `.\setup_win.bat`, заполнить `.env` и работать через `.\run_win.bat`.
 
-## Настройка
+## Настройка `.env`
 
 1. Скопируй `.env.example` в `.env`.
 2. При необходимости измени `LEMANA_CATALOG_URL`, `LEMANA_OUTPUT_DIR`, `LEMANA_OUTPUT_FILENAME`.
 3. По умолчанию включён `LEMANA_DATA_SOURCE=api-fallback`. При необходимости можно выбрать `html` или `api`.
 4. Если `LEMANA_COOKIE` пустой или протух, парсер сам попробует обновить cookie через Chrome CDP.
+
+`.env.example` — это читаемый шаблон с комментариями по группам. Рабочие значения хранятся в `.env`, он не должен попадать в Git.
+
+Минимум для первого запуска:
+
+```env
+LEMANA_CATALOG_URL="https://lemanapro.ru/catalogue/..."
+LEMANA_DATA_SOURCE="api-fallback"
+LEMANA_COOKIE=""
+```
+
+Если после `git pull` Git пишет, что локальный `.env.example` мешает обновлению, обычно это значит, что файл случайно правили на Windows. Если эти правки не нужны:
+
+```powershell
+git restore .env.example
+git pull origin main
+```
+
+Настоящий `.env` при этом не трогается.
 
 ## Запуск
 
@@ -92,6 +111,8 @@ copy .env.example .env
 - `--api-page-size` — размер API-батча.
 - `--api-articles-sleep` — пауза между API-батчами в режиме списка артикулов.
 - `--api-articles-mode strict-then-relaxed|relaxed` — обычный режим с повтором только недостающих товаров или прямой relaxed-запрос.
+- `--api-transport local|gas|gas-fallback` — транспорт для режима списка артикулов.
+- `--gas-proxy-url` и `--gas-proxy-token` — URL и необязательный токен опубликованного GAS Web App.
 - `--profile stable|careful|fast` — готовый профиль загрузки карточек.
 - `--catalog-concurrency` и `--product-concurrency` — верхняя параллельность запросов.
 - `--product-batch-sleep` — пауза между батчами карточек.
@@ -198,6 +219,84 @@ API-режим использует те же cookie и тот же preflight, �
 - `products-media:search` — изображения.
 
 Это резко уменьшает количество запросов к сайту: вместо отдельной HTML-загрузки каждой карточки используются пачки до 60 товаров. `api-fallback` является основным режимом: при проблеме API парсер автоматически вернётся к HTML-сценарию.
+
+## GAS proxy transport
+
+GAS proxy — экспериментальный транспорт для режима `--articles` / `--articles-file`. Идея такая: локальный Python остаётся главным приложением, получает API-контекст, нормализует данные и пишет Excel, а Google Apps Script Web App выполняет часть POST-запросов к API Lemana PRO с инфраструктуры Google.
+
+Режимы:
+
+- `local` — основной стабильный режим, все API-запросы идут с компьютера пользователя.
+- `gas` — batch артикулов отправляется только через Google Apps Script. Если GAS получает `403` или другую ошибку, прогон падает, чтобы было видно чистый результат эксперимента.
+- `gas-fallback` — сначала GAS, а если batch не прошёл, парсер добирает его локальным API.
+
+URL для `LEMANA_GAS_PROXY_URL` берётся в Apps Script:
+
+1. Открой проект Apps Script.
+2. Нажми `Deploy` -> `Manage deployments`.
+3. Создай или отредактируй deployment типа `Web app`.
+4. `Execute as`: `Me`.
+5. `Who has access`: для теста `Anyone` или `Anyone with Google account`.
+6. Нажми `Deploy`.
+7. Скопируй `Web app URL`, он должен заканчиваться на `/exec`.
+
+Добавь в `.env`:
+
+```env
+LEMANA_API_TRANSPORT="gas-fallback"
+LEMANA_GAS_PROXY_URL="https://script.google.com/macros/s/...../exec"
+LEMANA_GAS_PROXY_TOKEN=""
+```
+
+Если в Apps Script в `Script Properties` задан `LEMANA_PROXY_TOKEN`, такой же токен нужно указать в `LEMANA_GAS_PROXY_TOKEN`. Если token property не задан, оставь пусто.
+
+После обновления GAS-кода через `clasp push` существующий Web App deployment может продолжить исполнять старую версию. В Apps Script сделай:
+
+```text
+Deploy -> Manage deployments -> Edit -> New version -> Deploy
+```
+
+Практические команды:
+
+```bat
+.\run_win.bat --articles-file articles.txt --api-transport local --api-page-size 30 --api-articles-sleep 3 --max-articles 50
+```
+
+Локальный контрольный запуск. Все API-запросы идут с компьютера. Нужен как база сравнения: если `local` работает, а `gas` падает, проблема именно в GAS/Web App/доступах.
+
+```bat
+.\run_win.bat --articles-file articles.txt --api-transport gas --gas-proxy-url "https://script.google.com/macros/s/...../exec" --api-page-size 30 --api-articles-sleep 3 --max-articles 50
+```
+
+Чистый GAS-тест. Python получает контекст и пишет Excel, но batch-запросы `products-data/products-media` выполняет Google Apps Script. Если GAS получит `403`, запуск остановится: это удобно для диагностики гипотезы про Google IP.
+
+```bat
+.\run_win.bat --articles-file articles.txt --api-transport gas-fallback --gas-proxy-url "https://script.google.com/macros/s/...../exec" --api-page-size 30 --api-articles-sleep 3 --max-articles 50
+```
+
+Безопасный GAS-тест. Сначала пробует GAS, но если batch не прошёл, добирает его локальным API. Это лучший режим для первых боевых проверок, потому что он не должен ломать весь прогон из-за одной ошибки GAS.
+
+```bat
+.\run_win.bat --articles-file articles.txt --api-transport gas-fallback --api-page-size 30 --api-articles-sleep 3 --max-articles 900
+```
+
+Большой тест после успешных малых прогонов. URL GAS можно не указывать в команде, если он уже записан в `.env` как `LEMANA_GAS_PROXY_URL`.
+
+Если в `.env` уже заполнены:
+
+```env
+LEMANA_API_TRANSPORT="gas-fallback"
+LEMANA_GAS_PROXY_URL="https://script.google.com/macros/s/...../exec"
+LEMANA_GAS_PROXY_TOKEN=""
+```
+
+то команду можно сократить:
+
+```bat
+.\run_win.bat --articles-file articles.txt --api-page-size 30 --api-articles-sleep 3 --max-articles 50
+```
+
+Важно: GAS proxy — экспериментальный транспорт, не замена всей архитектуры. Если GAS тоже получает QRATOR `Access Blocked`, рабочим остаётся `local` или `gas-fallback`.
 
 ## Тесты
 
