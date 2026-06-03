@@ -111,6 +111,9 @@ CONFIG: Config = {
     "api_page_size": _env_int("LEMANA_API_PAGE_SIZE", 60),
     "api_articles_sleep": _env_float("LEMANA_API_ARTICLES_SLEEP", 0.0),
     "api_articles_mode": _env_str("LEMANA_API_ARTICLES_MODE", "strict-then-relaxed"),
+    "api_transport": _env_str("LEMANA_API_TRANSPORT", "local"),
+    "gas_proxy_url": _env_str("LEMANA_GAS_PROXY_URL", ""),
+    "gas_proxy_token": _env_str("LEMANA_GAS_PROXY_TOKEN", ""),
     "api_region_name": _env_str("LEMANA_API_REGION_NAME", "Москва, Московская область"),
     # ── Cookie (Playwright заполняет автоматически) ──────────────────────────
     "cookie": os.getenv("LEMANA_COOKIE", "").strip().strip("\"'"),
@@ -149,6 +152,16 @@ def validate_config(config: Config = CONFIG) -> None:
         raise ConfigError(
             "LEMANA_API_ARTICLES_MODE должен быть strict-then-relaxed или relaxed"
         )
+
+    if config["api_transport"] not in {"local", "gas", "gas-fallback"}:
+        raise ConfigError("LEMANA_API_TRANSPORT должен быть local, gas или gas-fallback")
+
+    if config["api_transport"] in {"gas", "gas-fallback"}:
+        parsed_gas_url = urlparse(config["gas_proxy_url"])
+        if parsed_gas_url.scheme not in {"http", "https"} or not parsed_gas_url.netloc:
+            raise ConfigError(
+                "LEMANA_GAS_PROXY_URL должен быть полным URL Web App для транспорта gas"
+            )
 
     positive_int_keys = [
         "max_products",

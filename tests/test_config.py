@@ -36,6 +36,9 @@ def _valid_config(**overrides):
             "api_page_size": 60,
             "api_articles_sleep": 0,
             "api_articles_mode": "strict-then-relaxed",
+            "api_transport": "local",
+            "gas_proxy_url": "",
+            "gas_proxy_token": "",
             "api_region_name": "Москва, Московская область",
         }
     )
@@ -90,6 +93,22 @@ class ConfigValidationTests(unittest.TestCase):
     def test_rejects_invalid_api_articles_mode(self):
         with self.assertRaisesRegex(ConfigError, "API_ARTICLES_MODE"):
             validate_config(_valid_config(api_articles_mode="broken"))
+
+    def test_rejects_invalid_api_transport(self):
+        with self.assertRaisesRegex(ConfigError, "API_TRANSPORT"):
+            validate_config(_valid_config(api_transport="broken"))
+
+    def test_gas_transport_requires_proxy_url(self):
+        with self.assertRaisesRegex(ConfigError, "GAS_PROXY_URL"):
+            validate_config(_valid_config(api_transport="gas", gas_proxy_url=""))
+
+    def test_gas_transport_accepts_proxy_url(self):
+        validate_config(
+            _valid_config(
+                api_transport="gas",
+                gas_proxy_url="https://script.google.com/macros/s/test/exec",
+            )
+        )
 
     def test_rejects_negative_max_articles(self):
         with self.assertRaisesRegex(ConfigError, "MAX_ARTICLES"):

@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, patch
 
 from lemana_parser.api.catalog_api import _load_products_batch, fetch_products_by_articles_api
 from lemana_parser.api.client import LemanaApiError
+from lemana_parser.api.gas_proxy import LemanaGasProxyError
 from lemana_parser.config import CONFIG
 
 
@@ -145,8 +146,10 @@ class ApiCatalogTests(unittest.IsolatedAsyncioTestCase):
     async def test_articles_api_sleep_runs_between_batches_only(self):
         old_page_size = CONFIG["api_page_size"]
         old_sleep = CONFIG["api_articles_sleep"]
+        old_transport = CONFIG["api_transport"]
         CONFIG["api_page_size"] = 1
         CONFIG["api_articles_sleep"] = 3
+        CONFIG["api_transport"] = "local"
         try:
             with (
                 patch("lemana_parser.api.catalog_api.load_api_context", return_value=object()),
@@ -160,9 +163,72 @@ class ApiCatalogTests(unittest.IsolatedAsyncioTestCase):
         finally:
             CONFIG["api_page_size"] = old_page_size
             CONFIG["api_articles_sleep"] = old_sleep
+            CONFIG["api_transport"] = old_transport
 
         self.assertEqual(len(products), 2)
         sleep_mock.assert_awaited_once_with(3)
+
+    async def test_articles_gas_transport_uses_proxy_batch(self):
+        old_page_size = CONFIG["api_page_size"]
+        old_transport = CONFIG["api_transport"]
+        CONFIG["api_page_size"] = 2
+        CONFIG["api_transport"] = "gas"
+        try:
+            with (
+                patch("lemana_parser.api.catalog_api.load_api_context", return_value=object()),
+                patch(
+                    "lemana_parser.api.catalog_api.fetch_products_batch_via_gas",
+                    new=AsyncMock(
+                        return_value=(
+                            [
+                                {
+                                    "productId": "111",
+                                    "displayedName": "GAS товар",
+                                    "productLink": "/product/gas/",
+                                    "price": {"main_price": 10},
+                                    "characteristics": [],
+                                }
+                            ],
+                            {"111": {"images": [{"url": "https://img.example/gas.jpg"}]}},
+                        )
+                    ),
+                ) as gas_mock,
+            ):
+                products, _ = await fetch_products_by_articles_api(object(), ["111", "222"])
+        finally:
+            CONFIG["api_page_size"] = old_page_size
+            CONFIG["api_transport"] = old_transport
+
+        self.assertEqual(products[0]["status"], "ok")
+        self.assertEqual(products[0]["article"], "111")
+        self.assertEqual(products[1]["status"], "api_data_missing")
+        gas_mock.assert_awaited_once()
+
+    async def test_articles_gas_fallback_uses_local_batch_on_proxy_error(self):
+        old_page_size = CONFIG["api_page_size"]
+        old_transport = CONFIG["api_transport"]
+        CONFIG["api_page_size"] = 1
+        CONFIG["api_transport"] = "gas-fallback"
+        try:
+            with (
+                patch("lemana_parser.api.catalog_api.load_api_context", return_value=object()),
+                patch(
+                    "lemana_parser.api.catalog_api.LemanaApiClient",
+                    return_value=FakeApiClient(),
+                ),
+                patch(
+                    "lemana_parser.api.catalog_api.fetch_products_batch_via_gas",
+                    new=AsyncMock(side_effect=LemanaGasProxyError("blocked")),
+                ) as gas_mock,
+            ):
+                products, _ = await fetch_products_by_articles_api(object(), ["111"])
+        finally:
+            CONFIG["api_page_size"] = old_page_size
+            CONFIG["api_transport"] = old_transport
+
+        self.assertEqual(products[0]["status"], "ok")
+        self.assertEqual(products[0]["article"], "111")
+        gas_mock.assert_awaited_once()
 
 
 if __name__ == "__main__":

@@ -8,8 +8,9 @@ import logging
 from curl_cffi.requests import AsyncSession
 
 from lemana_parser.api.client import LemanaApiClient, LemanaApiError, chunked
+from lemana_parser.api.gas_proxy import LemanaGasProxyError, fetch_products_batch_via_gas
 from lemana_parser.api.normalizers import normalize_api_product
-from lemana_parser.api.state import PlpStateError, build_plp_api_context
+from lemana_parser.api.state import PlpApiContext, PlpStateError, build_plp_api_context
 from lemana_parser.config import CONFIG
 from lemana_parser.http_utils import fetch_with_retry
 from lemana_parser.models import Product
@@ -92,6 +93,20 @@ async def _load_products_batch(
         logger.warning("API медиа не загрузились, продолжаем без них: %s", exc)
         media_map = {}
 
+    return _normalize_products_batch(product_ids, list(products_data_by_id.values()), media_map)
+
+
+def _normalize_products_batch(
+    product_ids: list[str],
+    products_data: list[dict],
+    media_map: dict[str, dict],
+) -> list[Product]:
+    products_data_by_id = {
+        str(product_data.get("productId")): product_data
+        for product_data in products_data
+        if product_data.get("productId")
+    }
+
     products_by_id = {
         str(product_data.get("productId")): normalize_api_product(
             product_data,
@@ -120,6 +135,20 @@ async def _load_products_batch(
     return result
 
 
+async def _load_products_batch_gas_proxy(
+    session: AsyncSession,
+    context: PlpApiContext,
+    product_ids: list[str],
+) -> list[Product]:
+    products_data, media_map = await fetch_products_batch_via_gas(
+        session,
+        context,
+        product_ids,
+        articles_mode=CONFIG["api_articles_mode"],
+    )
+    return _normalize_products_batch(product_ids, products_data, media_map)
+
+
 async def fetch_products_by_articles_api(
     session: AsyncSession,
     article_ids: list[str],
@@ -139,12 +168,38 @@ async def fetch_products_by_articles_api(
 
     batches = list(chunked(clean_ids, CONFIG["api_page_size"]))
     for batch_index, product_ids in enumerate(batches, start=1):
-        batch = await _load_products_batch(
-            client,
-            product_ids,
-            relaxed_missing_retry=True,
-            articles_mode=CONFIG["api_articles_mode"],
-        )
+        if CONFIG["api_transport"] in {"gas", "gas-fallback"}:
+            try:
+                logger.info(
+                    "API по артикулам: batch %d/%d через GAS proxy (%d шт)",
+                    batch_index,
+                    len(batches),
+                    len(product_ids),
+                )
+                batch = await _load_products_batch_gas_proxy(session, context, product_ids)
+            except LemanaGasProxyError as exc:
+                if CONFIG["api_transport"] == "gas":
+                    raise LemanaApiError(f"GAS proxy batch {batch_index}/{len(batches)}: {exc}") from exc
+                logger.warning(
+                    "GAS proxy не сработал для batch %d/%d: %s. "
+                    "Добираем batch локальным API.",
+                    batch_index,
+                    len(batches),
+                    exc,
+                )
+                batch = await _load_products_batch(
+                    client,
+                    product_ids,
+                    relaxed_missing_retry=True,
+                    articles_mode=CONFIG["api_articles_mode"],
+                )
+        else:
+            batch = await _load_products_batch(
+                client,
+                product_ids,
+                relaxed_missing_retry=True,
+                articles_mode=CONFIG["api_articles_mode"],
+            )
         for product in batch:
             char_keys.update(product.get("characteristics") or {})
         products.extend(batch)

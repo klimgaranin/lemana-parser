@@ -55,6 +55,12 @@ class CliTests(unittest.TestCase):
                     "100",
                     "--api-articles-mode",
                     "relaxed",
+                    "--api-transport",
+                    "gas-fallback",
+                    "--gas-proxy-url",
+                    "https://script.google.com/macros/s/test/exec",
+                    "--gas-proxy-token",
+                    "secret",
                     "--max-articles",
                     "10",
                     "--data-source",
@@ -69,6 +75,9 @@ class CliTests(unittest.TestCase):
         self.assertEqual(CONFIG["api_articles_sleep"], 3.0)
         self.assertEqual(CONFIG["api_page_size"], 100)
         self.assertEqual(CONFIG["api_articles_mode"], "relaxed")
+        self.assertEqual(CONFIG["api_transport"], "gas-fallback")
+        self.assertEqual(CONFIG["gas_proxy_url"], "https://script.google.com/macros/s/test/exec")
+        self.assertEqual(CONFIG["gas_proxy_token"], "secret")
         self.assertEqual(CONFIG["max_articles"], 10)
         self.assertEqual(CONFIG["data_source"], "api-fallback")
 
@@ -87,8 +96,12 @@ class CliTests(unittest.TestCase):
 
     def test_display_data_source_for_articles_is_api(self):
         CONFIG["data_source"] = "html"
+        CONFIG["api_transport"] = "local"
 
-        self.assertEqual(cli._display_data_source(["123"]), "api (по артикулам ЛМ)")
+        self.assertEqual(
+            cli._display_data_source(["123"]),
+            "api (по артикулам ЛМ, transport=local)",
+        )
 
     def test_display_data_source_for_api_fallback_is_explicit(self):
         CONFIG["data_source"] = "api-fallback"

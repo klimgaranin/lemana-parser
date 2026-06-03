@@ -130,6 +130,22 @@ def _parse_args(argv=None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--api-transport",
+        choices=["local", "gas", "gas-fallback"],
+        help=(
+            "Транспорт API для --articles/--articles-file: local, gas "
+            "или gas-fallback"
+        ),
+    )
+    parser.add_argument(
+        "--gas-proxy-url",
+        help="URL опубликованного Google Apps Script Web App для транспорта gas",
+    )
+    parser.add_argument(
+        "--gas-proxy-token",
+        help="Необязательный токен GAS proxy, если он задан в Script Properties",
+    )
+    parser.add_argument(
         "--max-articles",
         type=int,
         help="Ограничить количество артикулов после чтения и удаления дублей",
@@ -224,6 +240,9 @@ def _apply_cli_overrides(args: argparse.Namespace) -> None:
         api_page_size=args.api_page_size,
         api_articles_sleep=args.api_articles_sleep,
         api_articles_mode=args.api_articles_mode,
+        api_transport=args.api_transport,
+        gas_proxy_url=args.gas_proxy_url,
+        gas_proxy_token=args.gas_proxy_token,
         max_articles=args.max_articles,
         browser_impersonate=args.browser_impersonate,
         cookie=args.cookie.strip().strip("\"'") if args.cookie else None,
@@ -266,7 +285,7 @@ def _load_article_ids(args: argparse.Namespace) -> list[str]:
 
 def _display_data_source(article_ids: list[str]) -> str:
     if article_ids:
-        return "api (по артикулам ЛМ)"
+        return f"api (по артикулам ЛМ, transport={CONFIG['api_transport']})"
     if CONFIG["data_source"] == "api-fallback":
         return "api-fallback (API → HTML fallback)"
     if CONFIG["data_source"] == "api":
@@ -433,7 +452,8 @@ def main(argv=None) -> int:
             "   API batch: "
             f"{CONFIG['api_page_size']} шт, "
             f"sleep={CONFIG['api_articles_sleep']:.1f}s, "
-            f"mode={CONFIG['api_articles_mode']}"
+            f"mode={CONFIG['api_articles_mode']}, "
+            f"transport={CONFIG['api_transport']}"
         )
     if args.profile:
         print(f"   Профиль: {args.profile}")
