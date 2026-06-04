@@ -334,6 +334,59 @@ class ApiCatalogTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([product["article"] for product in products], ["0", "1", "2"])
         self.assertEqual(char_keys, ["Порядок"])
 
+    async def test_catalog_uses_first_page_total_before_scheduling_offsets(self):
+        old_page_size = CONFIG["api_page_size"]
+        old_transport = CONFIG["api_transport"]
+        old_max_products = CONFIG["max_products"]
+        old_catalog_concurrency = CONFIG["api_catalog_concurrency"]
+        CONFIG["api_page_size"] = 2
+        CONFIG["api_transport"] = "gas"
+        CONFIG["max_products"] = 10
+        CONFIG["api_catalog_concurrency"] = 8
+        requested_offsets = []
+
+        async def fake_load_page(session, context, client, *, offset):
+            requested_offsets.append(offset)
+            product_ids = [str(offset + index) for index in range(2) if offset + index < 3]
+            return (
+                offset,
+                product_ids,
+                3,
+                [
+                    {
+                        "status": "ok",
+                        "article": product_id,
+                        "url": f"https://example.test/{product_id}",
+                        "name": f"Товар {product_id}",
+                        "price": product_id,
+                        "image": "",
+                        "characteristics": {},
+                    }
+                    for product_id in product_ids
+                ],
+            )
+
+        try:
+            with (
+                patch(
+                    "lemana_parser.api.catalog_api.load_api_context",
+                    return_value=SimpleNamespace(total_count=None),
+                ),
+                patch(
+                    "lemana_parser.api.catalog_api._load_catalog_page",
+                    new=fake_load_page,
+                ),
+            ):
+                products, _ = await fetch_catalog_products_api(object())
+        finally:
+            CONFIG["api_page_size"] = old_page_size
+            CONFIG["api_transport"] = old_transport
+            CONFIG["max_products"] = old_max_products
+            CONFIG["api_catalog_concurrency"] = old_catalog_concurrency
+
+        self.assertEqual(requested_offsets, [0, 2])
+        self.assertEqual([product["article"] for product in products], ["0", "1", "2"])
+
 
 if __name__ == "__main__":
     unittest.main()

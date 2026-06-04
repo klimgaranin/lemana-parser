@@ -296,22 +296,33 @@ async def fetch_catalog_products_api(session: AsyncSession) -> tuple[list[Produc
     context = await load_api_context(session)
     client = LemanaApiClient(session, context)
     char_keys: set[str] = set()
-    total_count = context.total_count or CONFIG["max_products"]
-    progress_total = min(total_count, CONFIG["max_products"])
-    offsets = list(range(0, progress_total, CONFIG["api_page_size"]))
-    if not offsets:
-        raise LemanaApiError("API каталога вернул 0 товаров")
-    concurrency = min(CONFIG["api_catalog_concurrency"], len(offsets))
-    if concurrency > 1:
-        logger.info(
-            "API каталог: параллельная загрузка offset страниц, concurrency=%d",
-            concurrency,
-        )
 
     from tqdm import tqdm
 
     page_results: list[tuple[int, list[str], int, list[Product]]] = []
     loaded_char_keys: set[str] = set()
+
+    first_page = await _load_catalog_page(session, context, client, offset=0)
+    first_offset, _first_product_ids, api_total, first_batch_products = first_page
+    page_results.append(first_page)
+
+    if api_total:
+        total_count = min(api_total, CONFIG["max_products"])
+    else:
+        total_count = min(
+            context.total_count or len(first_batch_products),
+            CONFIG["max_products"],
+        )
+    if total_count <= 0 or not first_batch_products:
+        raise LemanaApiError("API каталога вернул 0 товаров")
+
+    offsets = list(range(CONFIG["api_page_size"], total_count, CONFIG["api_page_size"]))
+    concurrency = min(CONFIG["api_catalog_concurrency"], len(offsets)) if offsets else 1
+    if offsets and concurrency > 1:
+        logger.info(
+            "API каталог: параллельная загрузка offset страниц, concurrency=%d",
+            concurrency,
+        )
 
     semaphore = asyncio.Semaphore(concurrency)
 
@@ -319,20 +330,20 @@ async def fetch_catalog_products_api(session: AsyncSession) -> tuple[list[Produc
         async with semaphore:
             return await _load_catalog_page(session, context, client, offset=offset)
 
-    with tqdm(total=progress_total, desc="API каталог", unit="шт") as pbar:
+    with tqdm(total=total_count, desc="API каталог", unit="шт") as pbar:
+        for product in first_batch_products:
+            loaded_char_keys.update(product.get("characteristics") or {})
+        pbar.update(min(len(first_batch_products), total_count))
+        pbar.set_postfix({"offset": first_offset, "chars": len(loaded_char_keys)})
+
         tasks = [asyncio.create_task(load_offset(offset)) for offset in offsets]
         try:
             for task in asyncio.as_completed(tasks):
                 offset, page_product_ids, api_total, batch_products = await task
                 page_results.append((offset, page_product_ids, api_total, batch_products))
-                if api_total:
-                    total_count = min(api_total, CONFIG["max_products"])
-                    if pbar.total != total_count:
-                        pbar.total = total_count
-                        pbar.refresh()
                 for product in batch_products:
                     loaded_char_keys.update(product.get("characteristics") or {})
-                pbar.update(min(len(batch_products), max(0, progress_total - offset)))
+                pbar.update(min(len(batch_products), max(0, total_count - offset)))
                 pbar.set_postfix({"offset": offset, "chars": len(loaded_char_keys)})
         except Exception:
             for task in tasks:
