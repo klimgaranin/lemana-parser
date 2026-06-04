@@ -71,14 +71,20 @@ class TqdmLoggingHandler(logging.StreamHandler):
 
 
 # ── Логирование настраиваем до всего остального ──────────────────────────────
+LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+LOG_DATE_FORMAT = "%H:%M:%S"
+
+console_handler = TqdmLoggingHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+console_handler.setFormatter(logging.Formatter(LOG_FORMAT, LOG_DATE_FORMAT))
+
+file_handler = logging.FileHandler("parser.log", encoding="utf-8")
+file_handler.setLevel(logging.DEBUG)
+file_handler.setFormatter(logging.Formatter(LOG_FORMAT, LOG_DATE_FORMAT))
+
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    datefmt="%H:%M:%S",
-    handlers=[
-        TqdmLoggingHandler(sys.stdout),
-        logging.FileHandler("parser.log", encoding="utf-8"),
-    ],
+    level=logging.DEBUG,
+    handlers=[console_handler, file_handler],
 )
 logger = logging.getLogger("main")
 
@@ -122,6 +128,11 @@ def _parse_args(argv=None) -> argparse.Namespace:
         help="Размер API-батча для каталога и списка артикулов",
     )
     parser.add_argument(
+        "--api-catalog-concurrency",
+        type=int,
+        help="Параллельность API-страниц каталога, 1 стабильно, 2+ для ускорения",
+    )
+    parser.add_argument(
         "--api-articles-mode",
         choices=["strict-then-relaxed", "relaxed"],
         help=(
@@ -133,7 +144,7 @@ def _parse_args(argv=None) -> argparse.Namespace:
         "--api-transport",
         choices=["local", "gas", "gas-fallback"],
         help=(
-            "Транспорт API для --articles/--articles-file: local, gas "
+            "Транспорт API для каталога и --articles/--articles-file: local, gas "
             "или gas-fallback"
         ),
     )
@@ -238,6 +249,7 @@ def _apply_cli_overrides(args: argparse.Namespace) -> None:
         product_deferred_rounds=args.product_deferred_rounds,
         product_deferred_sleep=args.product_deferred_sleep,
         api_page_size=args.api_page_size,
+        api_catalog_concurrency=args.api_catalog_concurrency,
         api_articles_sleep=args.api_articles_sleep,
         api_articles_mode=args.api_articles_mode,
         api_transport=args.api_transport,
@@ -430,7 +442,7 @@ def main(argv=None) -> int:
     _apply_cli_overrides(args)
 
     if args.debug:
-        logging.getLogger().setLevel(logging.DEBUG)
+        console_handler.setLevel(logging.DEBUG)
 
     t0 = time.monotonic()
 
@@ -467,6 +479,7 @@ def main(argv=None) -> int:
         print(
             "   API batch: "
             f"{CONFIG['api_page_size']} шт, "
+            f"catalog concurrency={CONFIG['api_catalog_concurrency']}, "
             f"transport={CONFIG['api_transport']}"
         )
     if args.profile:

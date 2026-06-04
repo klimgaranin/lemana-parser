@@ -34,6 +34,7 @@ def _valid_config(**overrides):
             "data_source": "html",
             "max_articles": 0,
             "api_page_size": 60,
+            "api_catalog_concurrency": 1,
             "api_articles_sleep": 0,
             "api_articles_mode": "strict-then-relaxed",
             "api_transport": "local",
@@ -86,6 +87,10 @@ class ConfigValidationTests(unittest.TestCase):
     def test_rejects_invalid_api_page_size(self):
         with self.assertRaisesRegex(ConfigError, "API_PAGE_SIZE"):
             validate_config(_valid_config(api_page_size=101))
+
+    def test_rejects_too_large_api_catalog_concurrency(self):
+        with self.assertRaisesRegex(ConfigError, "API_CATALOG_CONCURRENCY"):
+            validate_config(_valid_config(api_catalog_concurrency=9))
 
     def test_rejects_negative_api_articles_sleep(self):
         with self.assertRaisesRegex(ConfigError, "API_ARTICLES_SLEEP"):

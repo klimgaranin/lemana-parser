@@ -109,6 +109,7 @@ git pull origin main
 - `--articles` и `--articles-file` — выгрузка по списку артикулов ЛМ через API.
 - `--max-articles` — ограничение количества артикулов после чтения файла и удаления дублей.
 - `--api-page-size` — размер API-батча.
+- `--api-catalog-concurrency` — сколько API-страниц каталога грузить одновременно. `1` стабильно, `2` тест ускорения.
 - `--api-articles-sleep` — пауза между API-батчами в режиме списка артикулов.
 - `--api-articles-mode strict-then-relaxed|relaxed` — обычный режим с повтором только недостающих товаров или прямой relaxed-запрос.
 - `--api-transport local|gas|gas-fallback` — транспорт API для каталога и списка артикулов.
@@ -125,7 +126,7 @@ git pull origin main
 - `--cookie` — cookie прямо из командной строки.
 - `--no-playwright` — не открывать браузер, использовать cookie из `.env` или `--cookie`.
 - `--check-cookie` — запустить диагностику cookie через `main.py`.
-- `--debug` — подробные логи.
+- `--debug` — подробные логи в консоли. Файл `parser.log` всегда пишет больше технических деталей, чем экран.
 - `--no-pause` — не ждать Enter в конце.
 
 ## Диагностика cookie
@@ -234,6 +235,8 @@ GAS proxy — экспериментальный транспорт для API-�
 - `gas` — API-запросы идут через Google Apps Script. Если GAS получает ошибку, запуск останавливается.
 - `gas-fallback` — сначала GAS, а если batch/страница не прошли, парсер добирает их локальным API.
 
+В консоли GAS-режим показывает короткие строки: метод, HTTP-статус, время ответа и маленький preview. Большие JSON-ответы не печатаются на экран, чтобы не забивать PowerShell. Подробные технические preview пишутся в `parser.log`.
+
 URL для `LEMANA_GAS_PROXY_URL` берётся в Apps Script:
 
 1. Открой проект Apps Script.
@@ -304,6 +307,14 @@ Deploy -> Manage deployments -> Edit -> New version -> Deploy
 ```
 
 Что делает: берёт каталог из `LEMANA_CATALOG_URL`, API-страницы каталога и данные товаров запрашивает через GAS, ограничивает выгрузку 300 товарами.
+
+Ускоренный тест каталога после проверки стабильности:
+
+```bat
+.\run_win.bat --data-source api --api-transport gas --api-page-size 90 --api-catalog-concurrency 2
+```
+
+Что делает: оставляет безопасный размер batch `90`, но грузит 2 страницы каталога одновременно. Если в `API HTTP` появятся `403/409/429`, верни `--api-catalog-concurrency 1`.
 
 Полный каталог через GAS:
 

@@ -25,6 +25,11 @@ def _trim_response_body(body: str, limit: int = 1000) -> str:
     return body[:limit] + f"... <обрезано {len(body) - limit} символов>"
 
 
+def _body_preview_for_console(body: Any) -> str:
+    """Короткий preview для консоли: статус важнее огромного JSON."""
+    return _trim_response_body(str(body or ""), 180)
+
+
 def _context_payload(context: PlpApiContext) -> dict[str, Any]:
     return {
         "apiBaseUrl": context.api_base_url,
@@ -91,13 +96,25 @@ async def _post_gas_proxy(session: AsyncSession, payload: dict[str, Any]) -> dic
         if not isinstance(item, dict):
             continue
         record_api_status(str(item.get("method") or "gas-proxy:inner"), item.get("statusCode"))
+        method = item.get("method")
+        status_code = item.get("statusCode")
+        elapsed_ms = item.get("elapsedMs")
+        body_preview = str(item.get("bodyPreview") or "")
         logger.info(
-            "GAS proxy: %s status=%s elapsed=%sms body=%s",
-            item.get("method"),
-            item.get("statusCode"),
-            item.get("elapsedMs"),
-            item.get("bodyPreview", ""),
+            "GAS proxy: %s status=%s elapsed=%sms preview=%s",
+            method,
+            status_code,
+            elapsed_ms,
+            _body_preview_for_console(body_preview),
         )
+        if body_preview:
+            logger.debug(
+                "GAS proxy full preview: %s status=%s elapsed=%sms body=%s",
+                method,
+                status_code,
+                elapsed_ms,
+                body_preview,
+            )
     return data
 
 

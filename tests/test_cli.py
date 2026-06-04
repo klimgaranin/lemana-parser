@@ -53,6 +53,8 @@ class CliTests(unittest.TestCase):
                     "3",
                     "--api-page-size",
                     "100",
+                    "--api-catalog-concurrency",
+                    "2",
                     "--api-articles-mode",
                     "relaxed",
                     "--api-transport",
@@ -74,6 +76,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(CONFIG["product_concurrency"], 2)
         self.assertEqual(CONFIG["api_articles_sleep"], 3.0)
         self.assertEqual(CONFIG["api_page_size"], 100)
+        self.assertEqual(CONFIG["api_catalog_concurrency"], 2)
         self.assertEqual(CONFIG["api_articles_mode"], "relaxed")
         self.assertEqual(CONFIG["api_transport"], "gas-fallback")
         self.assertEqual(CONFIG["gas_proxy_url"], "https://script.google.com/macros/s/test/exec")

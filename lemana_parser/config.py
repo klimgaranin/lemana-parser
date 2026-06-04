@@ -109,6 +109,7 @@ CONFIG: Config = {
     "cookie_auto_refresh": _env_bool("LEMANA_COOKIE_AUTO_REFRESH", True),
     # ── API сайта ───────────────────────────────────────────────────────────
     "api_page_size": _env_int("LEMANA_API_PAGE_SIZE", 60),
+    "api_catalog_concurrency": _env_int("LEMANA_API_CATALOG_CONCURRENCY", 1),
     "api_articles_sleep": _env_float("LEMANA_API_ARTICLES_SLEEP", 0.0),
     "api_articles_mode": _env_str("LEMANA_API_ARTICLES_MODE", "strict-then-relaxed"),
     "api_transport": _env_str("LEMANA_API_TRANSPORT", "local"),
@@ -173,6 +174,7 @@ def validate_config(config: Config = CONFIG) -> None:
         "product_timeout",
         "max_retries",
         "api_page_size",
+        "api_catalog_concurrency",
     ]
     for key in positive_int_keys:
         if config[key] < 1:
@@ -209,6 +211,9 @@ def validate_config(config: Config = CONFIG) -> None:
 
     if config["api_page_size"] < 1 or config["api_page_size"] > 100:
         raise ConfigError("LEMANA_API_PAGE_SIZE должен быть от 1 до 100")
+
+    if config["api_catalog_concurrency"] > 8:
+        raise ConfigError("LEMANA_API_CATALOG_CONCURRENCY должен быть от 1 до 8")
 
     if config["max_articles"] < 0:
         raise ConfigError("LEMANA_MAX_ARTICLES должен быть >= 0")

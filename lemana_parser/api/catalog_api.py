@@ -171,6 +171,41 @@ async def _load_catalog_page_gas_proxy(
     )
 
 
+async def _load_catalog_page(
+    session: AsyncSession,
+    context: PlpApiContext,
+    client: LemanaApiClient,
+    *,
+    offset: int,
+) -> tuple[int, list[str], int, list[Product]]:
+    if CONFIG["api_transport"] in {"gas", "gas-fallback"}:
+        try:
+            logger.info(
+                "API каталог: offset=%d через GAS proxy (batch=%d)",
+                offset,
+                CONFIG["api_page_size"],
+            )
+            product_ids, api_total, batch_products = await _load_catalog_page_gas_proxy(
+                session,
+                context,
+                offset=offset,
+            )
+            return offset, product_ids, api_total, batch_products
+        except LemanaGasProxyError as exc:
+            if CONFIG["api_transport"] == "gas":
+                raise LemanaApiError(f"GAS proxy catalog offset={offset}: {exc}") from exc
+            logger.warning(
+                "GAS proxy не сработал для каталога offset=%d: %s. "
+                "Добираем страницу локальным API.",
+                offset,
+                exc,
+            )
+
+    product_ids, api_total = await client.search_product_ids(offset=offset)
+    batch_products = await _load_products_batch(client, product_ids)
+    return offset, product_ids, api_total, batch_products
+
+
 async def fetch_products_by_articles_api(
     session: AsyncSession,
     article_ids: list[str],
@@ -260,68 +295,61 @@ async def fetch_products_by_articles_api(
 async def fetch_catalog_products_api(session: AsyncSession) -> tuple[list[Product], list[str]]:
     context = await load_api_context(session)
     client = LemanaApiClient(session, context)
-    products: list[Product] = []
     char_keys: set[str] = set()
     total_count = context.total_count or CONFIG["max_products"]
-    offset = 0
+    progress_total = min(total_count, CONFIG["max_products"])
+    offsets = list(range(0, progress_total, CONFIG["api_page_size"]))
+    if not offsets:
+        raise LemanaApiError("API каталога вернул 0 товаров")
+    concurrency = min(CONFIG["api_catalog_concurrency"], len(offsets))
+    if concurrency > 1:
+        logger.info(
+            "API каталог: параллельная загрузка offset страниц, concurrency=%d",
+            concurrency,
+        )
 
     from tqdm import tqdm
 
-    progress_total = min(total_count, CONFIG["max_products"])
+    page_results: list[tuple[int, list[str], int, list[Product]]] = []
+    loaded_char_keys: set[str] = set()
+
+    semaphore = asyncio.Semaphore(concurrency)
+
+    async def load_offset(offset: int) -> tuple[int, list[str], int, list[Product]]:
+        async with semaphore:
+            return await _load_catalog_page(session, context, client, offset=offset)
+
     with tqdm(total=progress_total, desc="API каталог", unit="шт") as pbar:
-        while len(products) < CONFIG["max_products"] and offset < total_count:
-            if CONFIG["api_transport"] in {"gas", "gas-fallback"}:
-                try:
-                    logger.info(
-                        "API каталог: offset=%d через GAS proxy (batch=%d)",
-                        offset,
-                        CONFIG["api_page_size"],
-                    )
-                    product_ids, api_total, batch_products = await _load_catalog_page_gas_proxy(
-                        session,
-                        context,
-                        offset=offset,
-                    )
-                except LemanaGasProxyError as exc:
-                    if CONFIG["api_transport"] == "gas":
-                        raise LemanaApiError(f"GAS proxy catalog offset={offset}: {exc}") from exc
-                    logger.warning(
-                        "GAS proxy не сработал для каталога offset=%d: %s. "
-                        "Добираем страницу локальным API.",
-                        offset,
-                        exc,
-                    )
-                    product_ids, api_total = await client.search_product_ids(offset=offset)
-                    limit_left = CONFIG["max_products"] - len(products)
-                    product_ids = product_ids[:limit_left]
-                    batch_products = await _load_products_batch(client, product_ids)
-            else:
-                product_ids, api_total = await client.search_product_ids(offset=offset)
-                limit_left = CONFIG["max_products"] - len(products)
-                product_ids = product_ids[:limit_left]
-                batch_products = await _load_products_batch(client, product_ids)
+        tasks = [asyncio.create_task(load_offset(offset)) for offset in offsets]
+        try:
+            for task in asyncio.as_completed(tasks):
+                offset, page_product_ids, api_total, batch_products = await task
+                page_results.append((offset, page_product_ids, api_total, batch_products))
+                if api_total:
+                    total_count = min(api_total, CONFIG["max_products"])
+                    if pbar.total != total_count:
+                        pbar.total = total_count
+                        pbar.refresh()
+                for product in batch_products:
+                    loaded_char_keys.update(product.get("characteristics") or {})
+                pbar.update(min(len(batch_products), max(0, progress_total - offset)))
+                pbar.set_postfix({"offset": offset, "chars": len(loaded_char_keys)})
+        except Exception:
+            for task in tasks:
+                task.cancel()
+            raise
 
-            if api_total:
-                total_count = min(api_total, CONFIG["max_products"])
-                if pbar.total != total_count:
-                    pbar.total = total_count
-                    pbar.refresh()
-            if not product_ids:
-                break
-
-            limit_left = CONFIG["max_products"] - len(products)
-            product_ids = product_ids[:limit_left]
-            batch_products = batch_products[:limit_left]
-            for product in batch_products:
-                char_keys.update(product.get("characteristics") or {})
-            products.extend(batch_products)
-            pbar.update(len(batch_products))
-            pbar.set_postfix({"offset": offset, "chars": len(char_keys)})
-
-            offset += CONFIG["api_page_size"]
-
-            if len(product_ids) < CONFIG["api_page_size"]:
-                break
+    products: list[Product] = []
+    for _offset, _product_ids, _api_total, batch_products in sorted(
+        page_results,
+        key=lambda item: item[0],
+    ):
+        limit_left = CONFIG["max_products"] - len(products)
+        if limit_left <= 0:
+            break
+        for product in batch_products[:limit_left]:
+            char_keys.update(product.get("characteristics") or {})
+        products.extend(batch_products[:limit_left])
 
     if not products:
         raise LemanaApiError("API каталога вернул 0 товаров")

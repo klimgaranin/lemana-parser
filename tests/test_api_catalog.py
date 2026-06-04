@@ -1,3 +1,4 @@
+import asyncio
 import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -239,9 +240,11 @@ class ApiCatalogTests(unittest.IsolatedAsyncioTestCase):
         old_page_size = CONFIG["api_page_size"]
         old_transport = CONFIG["api_transport"]
         old_max_products = CONFIG["max_products"]
+        old_catalog_concurrency = CONFIG["api_catalog_concurrency"]
         CONFIG["api_page_size"] = 100
         CONFIG["api_transport"] = "gas"
         CONFIG["max_products"] = 1
+        CONFIG["api_catalog_concurrency"] = 1
         try:
             with (
                 patch(
@@ -273,11 +276,63 @@ class ApiCatalogTests(unittest.IsolatedAsyncioTestCase):
             CONFIG["api_page_size"] = old_page_size
             CONFIG["api_transport"] = old_transport
             CONFIG["max_products"] = old_max_products
+            CONFIG["api_catalog_concurrency"] = old_catalog_concurrency
 
         self.assertEqual(len(products), 1)
         self.assertEqual(products[0]["status"], "ok")
         self.assertEqual(products[0]["article"], "111")
         gas_mock.assert_awaited_once()
+
+    async def test_parallel_catalog_keeps_offset_order(self):
+        old_page_size = CONFIG["api_page_size"]
+        old_transport = CONFIG["api_transport"]
+        old_max_products = CONFIG["max_products"]
+        old_catalog_concurrency = CONFIG["api_catalog_concurrency"]
+        CONFIG["api_page_size"] = 1
+        CONFIG["api_transport"] = "gas"
+        CONFIG["max_products"] = 3
+        CONFIG["api_catalog_concurrency"] = 2
+
+        async def fake_load_page(session, context, client, *, offset):
+            if offset == 0:
+                await asyncio.sleep(0.01)
+            return (
+                offset,
+                [str(offset)],
+                3,
+                [
+                    {
+                        "status": "ok",
+                        "article": str(offset),
+                        "url": f"https://example.test/{offset}",
+                        "name": f"Товар {offset}",
+                        "price": offset,
+                        "image": "",
+                        "characteristics": {"Порядок": str(offset)},
+                    }
+                ],
+            )
+
+        try:
+            with (
+                patch(
+                    "lemana_parser.api.catalog_api.load_api_context",
+                    return_value=SimpleNamespace(total_count=3),
+                ),
+                patch(
+                    "lemana_parser.api.catalog_api._load_catalog_page",
+                    new=fake_load_page,
+                ),
+            ):
+                products, char_keys = await fetch_catalog_products_api(object())
+        finally:
+            CONFIG["api_page_size"] = old_page_size
+            CONFIG["api_transport"] = old_transport
+            CONFIG["max_products"] = old_max_products
+            CONFIG["api_catalog_concurrency"] = old_catalog_concurrency
+
+        self.assertEqual([product["article"] for product in products], ["0", "1", "2"])
+        self.assertEqual(char_keys, ["Порядок"])
 
 
 if __name__ == "__main__":
