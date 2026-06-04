@@ -88,9 +88,8 @@ class ConfigValidationTests(unittest.TestCase):
         with self.assertRaisesRegex(ConfigError, "API_PAGE_SIZE"):
             validate_config(_valid_config(api_page_size=101))
 
-    def test_rejects_too_large_api_catalog_concurrency(self):
-        with self.assertRaisesRegex(ConfigError, "API_CATALOG_CONCURRENCY"):
-            validate_config(_valid_config(api_catalog_concurrency=9))
+    def test_accepts_high_api_catalog_concurrency_for_speed_tests(self):
+        validate_config(_valid_config(api_catalog_concurrency=32))
 
     def test_rejects_negative_api_articles_sleep(self):
         with self.assertRaisesRegex(ConfigError, "API_ARTICLES_SLEEP"):

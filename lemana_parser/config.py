@@ -212,9 +212,6 @@ def validate_config(config: Config = CONFIG) -> None:
     if config["api_page_size"] < 1 or config["api_page_size"] > 100:
         raise ConfigError("LEMANA_API_PAGE_SIZE должен быть от 1 до 100")
 
-    if config["api_catalog_concurrency"] > 8:
-        raise ConfigError("LEMANA_API_CATALOG_CONCURRENCY должен быть от 1 до 8")
-
     if config["max_articles"] < 0:
         raise ConfigError("LEMANA_MAX_ARTICLES должен быть >= 0")
 

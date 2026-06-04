@@ -109,7 +109,7 @@ git pull origin main
 - `--articles` и `--articles-file` — выгрузка по списку артикулов ЛМ через API.
 - `--max-articles` — ограничение количества артикулов после чтения файла и удаления дублей.
 - `--api-page-size` — размер API-батча.
-- `--api-catalog-concurrency` — сколько API-страниц каталога грузить одновременно. `1` стабильно, `2` тест ускорения.
+- `--api-catalog-concurrency` — сколько API-страниц каталога грузить одновременно. `1` стабильно, `8+` speed-test.
 - `--api-articles-sleep` — пауза между API-батчами в режиме списка артикулов.
 - `--api-articles-mode strict-then-relaxed|relaxed` — обычный режим с повтором только недостающих товаров или прямой relaxed-запрос.
 - `--api-transport local|gas|gas-fallback` — транспорт API для каталога и списка артикулов.
@@ -315,6 +315,14 @@ Deploy -> Manage deployments -> Edit -> New version -> Deploy
 ```
 
 Что делает: оставляет безопасный размер batch `90`, но грузит 2 страницы каталога одновременно. Если в `API HTTP` появятся `403/409/429`, верни `--api-catalog-concurrency 1`.
+
+Максимально быстрый тест каталога:
+
+```bat
+.\run_win.bat --data-source api --api-transport gas --api-page-size 90 --api-catalog-concurrency 16 --max-products 5000
+```
+
+Что делает: размер batch оставляет `90`, потому что выше уже ловится `409`, но агрессивно увеличивает количество одновременно загружаемых страниц. Если всё чисто, можно пробовать `--api-catalog-concurrency 24` или `32`. Если появляются `403/409/429`, уменьши concurrency.
 
 Полный каталог через GAS:
 
