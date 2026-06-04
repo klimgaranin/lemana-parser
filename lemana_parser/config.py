@@ -115,6 +115,7 @@ CONFIG: Config = {
     "gas_proxy_url": _env_str("LEMANA_GAS_PROXY_URL", ""),
     "gas_proxy_token": _env_str("LEMANA_GAS_PROXY_TOKEN", ""),
     "api_region_name": _env_str("LEMANA_API_REGION_NAME", "Москва, Московская область"),
+    "api_fallback_region_ids": _env_str("LEMANA_API_FALLBACK_REGION_IDS", ""),
     # ── Cookie (Playwright заполняет автоматически) ──────────────────────────
     "cookie": os.getenv("LEMANA_COOKIE", "").strip().strip("\"'"),
 }

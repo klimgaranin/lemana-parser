@@ -7,6 +7,7 @@ from collections.abc import Iterable
 
 from curl_cffi.requests import AsyncSession
 
+from lemana_parser.api.metrics import record_api_status
 from lemana_parser.api.state import PlpApiContext
 from lemana_parser.config import CONFIG
 
@@ -84,6 +85,7 @@ class LemanaApiClient:
             headers=self._headers(),
             timeout=CONFIG["catalog_timeout"],
         )
+        record_api_status(method, response.status_code)
         if response.status_code >= 400:
             content_type = _response_content_type(response)
             body = _trim_response_body(_response_text(response))

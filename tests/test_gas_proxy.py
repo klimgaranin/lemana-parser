@@ -1,7 +1,10 @@
 import unittest
 from types import SimpleNamespace
 
-from lemana_parser.api.gas_proxy import fetch_products_batch_via_gas
+from lemana_parser.api.gas_proxy import (
+    fetch_catalog_page_via_gas,
+    fetch_products_batch_via_gas,
+)
 from lemana_parser.api.state import PlpApiContext
 from lemana_parser.config import CONFIG
 
@@ -25,6 +28,7 @@ class GasProxyTests(unittest.IsolatedAsyncioTestCase):
         self.original_config = dict(CONFIG)
         CONFIG["gas_proxy_url"] = "https://script.google.com/macros/s/test/exec"
         CONFIG["gas_proxy_token"] = "secret"
+        CONFIG["api_fallback_region_ids"] = "35, 36"
 
     def tearDown(self):
         CONFIG.clear()
@@ -74,6 +78,39 @@ class GasProxyTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(session.last_payload["productIds"], ["111"])
         self.assertEqual(session.last_payload["articlesMode"], "relaxed")
         self.assertEqual(session.last_payload["context"]["apiKey"], "key")
+        self.assertEqual(session.last_payload["context"]["familyId"], "family")
+        self.assertEqual(session.last_payload["fallbackRegionIds"], ["35", "36"])
+
+    async def test_sends_catalog_page_request_to_gas_proxy(self):
+        response = SimpleNamespace(
+            status_code=200,
+            headers={"content-type": "application/json"},
+            text='{"ok":true,"productIds":["111"],"totalCount":1,"productsData":[{"productId":"111"}],"mediaMap":{},"logs":[]}',
+            json=lambda: {
+                "ok": True,
+                "productIds": ["111"],
+                "totalCount": 1,
+                "productsData": [{"productId": "111"}],
+                "mediaMap": {},
+                "logs": [],
+            },
+        )
+        session = FakeSession(response)
+
+        product_ids, total_count, products_data, media_map = await fetch_catalog_page_via_gas(
+            session,
+            self._context(),
+            offset=100,
+        )
+
+        self.assertEqual(product_ids, ["111"])
+        self.assertEqual(total_count, 1)
+        self.assertEqual(products_data, [{"productId": "111"}])
+        self.assertEqual(media_map, {})
+        self.assertEqual(session.last_payload["action"], "catalogPage")
+        self.assertEqual(session.last_payload["offset"], 100)
+        self.assertEqual(session.last_payload["limit"], CONFIG["api_page_size"])
+        self.assertEqual(session.last_payload["fallbackRegionIds"], ["35", "36"])
 
     async def test_raises_on_gas_proxy_error_body(self):
         response = SimpleNamespace(

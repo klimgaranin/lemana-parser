@@ -1,7 +1,12 @@
 import unittest
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
-from lemana_parser.api.catalog_api import _load_products_batch, fetch_products_by_articles_api
+from lemana_parser.api.catalog_api import (
+    _load_products_batch,
+    fetch_catalog_products_api,
+    fetch_products_by_articles_api,
+)
 from lemana_parser.api.client import LemanaApiError
 from lemana_parser.api.gas_proxy import LemanaGasProxyError
 from lemana_parser.config import CONFIG
@@ -226,6 +231,50 @@ class ApiCatalogTests(unittest.IsolatedAsyncioTestCase):
             CONFIG["api_page_size"] = old_page_size
             CONFIG["api_transport"] = old_transport
 
+        self.assertEqual(products[0]["status"], "ok")
+        self.assertEqual(products[0]["article"], "111")
+        gas_mock.assert_awaited_once()
+
+    async def test_catalog_gas_transport_uses_proxy_page(self):
+        old_page_size = CONFIG["api_page_size"]
+        old_transport = CONFIG["api_transport"]
+        old_max_products = CONFIG["max_products"]
+        CONFIG["api_page_size"] = 100
+        CONFIG["api_transport"] = "gas"
+        CONFIG["max_products"] = 1
+        try:
+            with (
+                patch(
+                    "lemana_parser.api.catalog_api.load_api_context",
+                    return_value=SimpleNamespace(total_count=1),
+                ),
+                patch(
+                    "lemana_parser.api.catalog_api.fetch_catalog_page_via_gas",
+                    new=AsyncMock(
+                        return_value=(
+                            ["111"],
+                            1,
+                            [
+                                {
+                                    "productId": "111",
+                                    "displayedName": "GAS каталог",
+                                    "productLink": "/product/catalog-gas/",
+                                    "price": {"main_price": 20},
+                                    "characteristics": [],
+                                }
+                            ],
+                            {"111": {"images": [{"url": "https://img.example/catalog.jpg"}]}},
+                        )
+                    ),
+                ) as gas_mock,
+            ):
+                products, _ = await fetch_catalog_products_api(object())
+        finally:
+            CONFIG["api_page_size"] = old_page_size
+            CONFIG["api_transport"] = old_transport
+            CONFIG["max_products"] = old_max_products
+
+        self.assertEqual(len(products), 1)
         self.assertEqual(products[0]["status"], "ok")
         self.assertEqual(products[0]["article"], "111")
         gas_mock.assert_awaited_once()

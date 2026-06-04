@@ -8,7 +8,11 @@ import logging
 from curl_cffi.requests import AsyncSession
 
 from lemana_parser.api.client import LemanaApiClient, LemanaApiError, chunked
-from lemana_parser.api.gas_proxy import LemanaGasProxyError, fetch_products_batch_via_gas
+from lemana_parser.api.gas_proxy import (
+    LemanaGasProxyError,
+    fetch_catalog_page_via_gas,
+    fetch_products_batch_via_gas,
+)
 from lemana_parser.api.normalizers import normalize_api_product
 from lemana_parser.api.state import PlpApiContext, PlpStateError, build_plp_api_context
 from lemana_parser.config import CONFIG
@@ -149,6 +153,24 @@ async def _load_products_batch_gas_proxy(
     return _normalize_products_batch(product_ids, products_data, media_map)
 
 
+async def _load_catalog_page_gas_proxy(
+    session: AsyncSession,
+    context: PlpApiContext,
+    *,
+    offset: int,
+) -> tuple[list[str], int, list[Product]]:
+    product_ids, total_count, products_data, media_map = await fetch_catalog_page_via_gas(
+        session,
+        context,
+        offset=offset,
+    )
+    return (
+        product_ids,
+        total_count,
+        _normalize_products_batch(product_ids, products_data, media_map),
+    )
+
+
 async def fetch_products_by_articles_api(
     session: AsyncSession,
     article_ids: list[str],
@@ -248,7 +270,37 @@ async def fetch_catalog_products_api(session: AsyncSession) -> tuple[list[Produc
     progress_total = min(total_count, CONFIG["max_products"])
     with tqdm(total=progress_total, desc="API каталог", unit="шт") as pbar:
         while len(products) < CONFIG["max_products"] and offset < total_count:
-            product_ids, api_total = await client.search_product_ids(offset=offset)
+            if CONFIG["api_transport"] in {"gas", "gas-fallback"}:
+                try:
+                    logger.info(
+                        "API каталог: offset=%d через GAS proxy (batch=%d)",
+                        offset,
+                        CONFIG["api_page_size"],
+                    )
+                    product_ids, api_total, batch_products = await _load_catalog_page_gas_proxy(
+                        session,
+                        context,
+                        offset=offset,
+                    )
+                except LemanaGasProxyError as exc:
+                    if CONFIG["api_transport"] == "gas":
+                        raise LemanaApiError(f"GAS proxy catalog offset={offset}: {exc}") from exc
+                    logger.warning(
+                        "GAS proxy не сработал для каталога offset=%d: %s. "
+                        "Добираем страницу локальным API.",
+                        offset,
+                        exc,
+                    )
+                    product_ids, api_total = await client.search_product_ids(offset=offset)
+                    limit_left = CONFIG["max_products"] - len(products)
+                    product_ids = product_ids[:limit_left]
+                    batch_products = await _load_products_batch(client, product_ids)
+            else:
+                product_ids, api_total = await client.search_product_ids(offset=offset)
+                limit_left = CONFIG["max_products"] - len(products)
+                product_ids = product_ids[:limit_left]
+                batch_products = await _load_products_batch(client, product_ids)
+
             if api_total:
                 total_count = min(api_total, CONFIG["max_products"])
                 if pbar.total != total_count:
@@ -259,7 +311,7 @@ async def fetch_catalog_products_api(session: AsyncSession) -> tuple[list[Produc
 
             limit_left = CONFIG["max_products"] - len(products)
             product_ids = product_ids[:limit_left]
-            batch_products = await _load_products_batch(client, product_ids)
+            batch_products = batch_products[:limit_left]
             for product in batch_products:
                 char_keys.update(product.get("characteristics") or {})
             products.extend(batch_products)

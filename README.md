@@ -111,7 +111,7 @@ git pull origin main
 - `--api-page-size` — размер API-батча.
 - `--api-articles-sleep` — пауза между API-батчами в режиме списка артикулов.
 - `--api-articles-mode strict-then-relaxed|relaxed` — обычный режим с повтором только недостающих товаров или прямой relaxed-запрос.
-- `--api-transport local|gas|gas-fallback` — транспорт для режима списка артикулов.
+- `--api-transport local|gas|gas-fallback` — транспорт API для каталога и списка артикулов.
 - `--gas-proxy-url` и `--gas-proxy-token` — URL и необязательный токен опубликованного GAS Web App.
 - `--profile stable|careful|fast` — готовый профиль загрузки карточек.
 - `--catalog-concurrency` и `--product-concurrency` — верхняя параллельность запросов.
@@ -222,13 +222,17 @@ API-режим использует те же cookie и тот же preflight, �
 
 ## GAS proxy transport
 
-GAS proxy — экспериментальный транспорт для режима `--articles` / `--articles-file`. Идея такая: локальный Python остаётся главным приложением, получает API-контекст, нормализует данные и пишет Excel, а Google Apps Script Web App выполняет часть POST-запросов к API Lemana PRO с инфраструктуры Google.
+GAS proxy — экспериментальный транспорт для API-запросов. Простыми словами:
+
+- Python на компьютере запускает процесс, проверяет cookie, готовит Excel и управляет логикой.
+- Google Apps Script делает API-запросы к Lemana PRO.
+- Если Google IP реально реже ловит `403`, этот режим станет основным.
 
 Режимы:
 
-- `local` — основной стабильный режим, все API-запросы идут с компьютера пользователя.
-- `gas` — batch артикулов отправляется только через Google Apps Script. Если GAS получает `403` или другую ошибку, прогон падает, чтобы было видно чистый результат эксперимента.
-- `gas-fallback` — сначала GAS, а если batch не прошёл, парсер добирает его локальным API.
+- `local` — API-запросы идут с компьютера пользователя.
+- `gas` — API-запросы идут через Google Apps Script. Если GAS получает ошибку, запуск останавливается.
+- `gas-fallback` — сначала GAS, а если batch/страница не прошли, парсер добирает их локальным API.
 
 URL для `LEMANA_GAS_PROXY_URL` берётся в Apps Script:
 
@@ -246,9 +250,18 @@ URL для `LEMANA_GAS_PROXY_URL` берётся в Apps Script:
 LEMANA_API_TRANSPORT="gas-fallback"
 LEMANA_GAS_PROXY_URL="https://script.google.com/macros/s/...../exec"
 LEMANA_GAS_PROXY_TOKEN=""
+LEMANA_API_FALLBACK_REGION_IDS=""
 ```
 
 Если в Apps Script в `Script Properties` задан `LEMANA_PROXY_TOKEN`, такой же токен нужно указать в `LEMANA_GAS_PROXY_TOKEN`. Если token property не задан, оставь пусто.
+
+`LEMANA_API_FALLBACK_REGION_IDS` — это резервные регионы для добора `api_data_missing`. Например:
+
+```env
+LEMANA_API_FALLBACK_REGION_IDS="35,36"
+```
+
+Это значит: если основной регион не вернул данные товара, GAS попробует эти `regionId`. Пока список регионов нужно заполнять только проверенными ID. Без проверенных ID оставь пусто.
 
 После обновления GAS-кода через `clasp push` существующий Web App deployment может продолжить исполнять старую версию. В Apps Script сделай:
 
@@ -256,47 +269,91 @@ LEMANA_GAS_PROXY_TOKEN=""
 Deploy -> Manage deployments -> Edit -> New version -> Deploy
 ```
 
-Практические команды:
+### Артикулы через GAS
+
+Контрольный локальный запуск:
 
 ```bat
-.\run_win.bat --articles-file articles.txt --api-transport local --api-page-size 30 --api-articles-sleep 3 --max-articles 50
+.\run_win.bat --articles-file articles.txt --api-transport local --api-page-size 30 --api-articles-sleep 0 --max-articles 50
 ```
 
-Локальный контрольный запуск. Все API-запросы идут с компьютера. Нужен как база сравнения: если `local` работает, а `gas` падает, проблема именно в GAS/Web App/доступах.
+Что делает: берёт первые 50 артикулов из `articles.txt`, всё запрашивает с компьютера. Это база для сравнения.
+
+Чистый GAS-тест:
 
 ```bat
-.\run_win.bat --articles-file articles.txt --api-transport gas --gas-proxy-url "https://script.google.com/macros/s/...../exec" --api-page-size 30 --api-articles-sleep 3 --max-articles 50
+.\run_win.bat --articles-file articles.txt --api-transport gas --api-page-size 30 --api-articles-sleep 0 --max-articles 50
 ```
 
-Чистый GAS-тест. Python получает контекст и пишет Excel, но batch-запросы `products-data/products-media` выполняет Google Apps Script. Если GAS получит `403`, запуск остановится: это удобно для диагностики гипотезы про Google IP.
+Что делает: Python управляет запуском, но API-запросы товаров делает GAS. Если GAS словит `403/401/429`, запуск остановится, чтобы проблему было видно.
+
+Безопасный GAS-запуск:
 
 ```bat
-.\run_win.bat --articles-file articles.txt --api-transport gas-fallback --gas-proxy-url "https://script.google.com/macros/s/...../exec" --api-page-size 30 --api-articles-sleep 3 --max-articles 50
+.\run_win.bat --articles-file articles.txt --api-transport gas-fallback --api-page-size 30 --api-articles-sleep 0 --max-articles 1000
 ```
 
-Безопасный GAS-тест. Сначала пробует GAS, но если batch не прошёл, добирает его локальным API. Это лучший режим для первых боевых проверок, потому что он не должен ломать весь прогон из-за одной ошибки GAS.
+Что делает: сначала пробует GAS, а если GAS batch сломался, добирает его локально. Это лучший режим для длинных боевых тестов.
+
+### Каталог через GAS
+
+Малый тест каталога:
 
 ```bat
-.\run_win.bat --articles-file articles.txt --api-transport gas-fallback --api-page-size 30 --api-articles-sleep 3 --max-articles 900
+.\run_win.bat --data-source api --api-transport gas --api-page-size 100 --max-products 300
 ```
 
-Большой тест после успешных малых прогонов. URL GAS можно не указывать в команде, если он уже записан в `.env` как `LEMANA_GAS_PROXY_URL`.
+Что делает: берёт каталог из `LEMANA_CATALOG_URL`, API-страницы каталога и данные товаров запрашивает через GAS, ограничивает выгрузку 300 товарами.
 
-Если в `.env` уже заполнены:
+Полный каталог через GAS:
+
+```bat
+.\run_win.bat --data-source api --api-transport gas --api-page-size 100
+```
+
+Что делает: выгружает весь каталог через GAS. Если GAS сломался, запуск остановится.
+
+Полный каталог через GAS с подстраховкой:
+
+```bat
+.\run_win.bat --data-source api-fallback --api-transport gas-fallback --api-page-size 100
+```
+
+Что делает: сначала пробует каталог через GAS, а если GAS/API сломались, переходит в резервный сценарий.
+
+### Как читать итог
+
+В конце API/GAS-запуска есть строка:
+
+```text
+API HTTP : статусы 200=448, 403=0, 429=0; ошибки нет
+```
+
+Как понимать:
+
+- `200` — нормальные запросы.
+- `401` — проблема доступа, cookie или публикации GAS Web App.
+- `403` — блокировка/антибот.
+- `429` — слишком часто, нужно снижать batch или добавлять паузу.
+- `5xx` — серверная ошибка.
+
+Если видишь много `401/403/429`, запуск подозрительный.
+
+### Что такое api_data_missing
+
+`api_data_missing` — это не падение запроса. Это значит:
+
+1. Артикул был во входном списке или найден в каталоге.
+2. API-запрос прошёл.
+3. Но `products-data:search` не вернул название/цену/ссылку товара.
+
+В GAS-режиме такие товары остаются в GAS: после основного запроса парсер просит GAS добрать missing-товары через резервные `regionId` из:
 
 ```env
-LEMANA_API_TRANSPORT="gas-fallback"
-LEMANA_GAS_PROXY_URL="https://script.google.com/macros/s/...../exec"
-LEMANA_GAS_PROXY_TOKEN=""
+LEMANA_API_FALLBACK_REGION_IDS=""
 ```
 
-то команду можно сократить:
-
-```bat
-.\run_win.bat --articles-file articles.txt --api-page-size 30 --api-articles-sleep 3 --max-articles 50
-```
-
-Важно: GAS proxy — экспериментальный транспорт, не замена всей архитектуры. Если GAS тоже получает QRATOR `Access Blocked`, рабочим остаётся `local` или `gas-fallback`.
+Если список пустой, региональный добор не выполняется. Следующий этап — найти API-метод сайта, который отдаёт список регионов, и задокументировать его.
 
 ## Тесты
 

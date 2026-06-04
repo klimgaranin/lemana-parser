@@ -40,6 +40,7 @@ def _valid_config(**overrides):
             "gas_proxy_url": "",
             "gas_proxy_token": "",
             "api_region_name": "Москва, Московская область",
+            "api_fallback_region_ids": "",
         }
     )
     config.update(overrides)

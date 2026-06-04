@@ -333,10 +333,12 @@ async def _run_api_parsing(article_ids: list[str] | None = None) -> tuple[str, P
         fetch_catalog_products_api,
         fetch_products_by_articles_api,
     )
+    from lemana_parser.api.metrics import API_METRICS, reset_api_metrics
     from lemana_parser.excel_writer import write_xlsx
     from lemana_parser.http_utils import create_session
     from lemana_parser.products import summarize_products
 
+    reset_api_metrics()
     async with create_session() as session:
         if article_ids:
             logger.info("📄 Шаг 2/3: Получаем товары по артикулам ЛМ через API...")
@@ -357,6 +359,12 @@ async def _run_api_parsing(article_ids: list[str] | None = None) -> tuple[str, P
         summary["errors"],
         summary["status_counts"],
     )
+    if API_METRICS.has_data():
+        logger.info(
+            "API HTTP: статусы=%s, ошибки=%s",
+            API_METRICS.status_summary(),
+            API_METRICS.error_summary(),
+        )
     return out_path, summary
 
 
@@ -455,6 +463,12 @@ def main(argv=None) -> int:
             f"mode={CONFIG['api_articles_mode']}, "
             f"transport={CONFIG['api_transport']}"
         )
+    elif CONFIG["data_source"] in {"api", "api-fallback"}:
+        print(
+            "   API batch: "
+            f"{CONFIG['api_page_size']} шт, "
+            f"transport={CONFIG['api_transport']}"
+        )
     if args.profile:
         print(f"   Профиль: {args.profile}")
     print(
@@ -504,6 +518,17 @@ def main(argv=None) -> int:
     elapsed = time.monotonic() - t0
     if result:
         out_path, summary = result
+        api_http_line = None
+        try:
+            from lemana_parser.api.metrics import API_METRICS
+
+            if API_METRICS.has_data():
+                api_http_line = (
+                    f"статусы {API_METRICS.status_summary()}; "
+                    f"ошибки {API_METRICS.error_summary()}"
+                )
+        except Exception:
+            api_http_line = None
         print()
         print("=" * 60)
         print("✨  Готово!")
@@ -518,6 +543,8 @@ def main(argv=None) -> int:
                 if status != "ok"
             ]
             print(f"   Статусы  : {', '.join(status_parts)}")
+        if api_http_line:
+            print(f"   API HTTP : {api_http_line}")
         print(f"   Время    : {elapsed:.1f} сек")
         print("=" * 60)
         return 0
